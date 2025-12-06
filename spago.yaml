@@ -1,0 +1,37 @@
+package:
+  name: webb-sql
+  dependencies:
+    - console
+    - prelude
+    - aff
+    - arrays
+    - effect
+    - foldable-traversable
+    - maybe
+    - monad-loops
+    - strings
+    - transformers
+    - tuples
+    - unsafe-coerce
+    - webb-test
+    - webb-refer
+    - webb-monad
+    - webb-writer
+
+  test:
+    main: Test.Main
+    dependencies:
+      - spec
+      - spec-discovery
+      - spec-node
+      - webb-test
+
+workspace:
+  packageSet:
+    registry: 63.9.0
+  extraPackages:
+    spec-discovery: 8.2.0
+    webb-test: 0.0.1
+    webb-refer: 0.0.2
+    webb-monad: 0.0.2
+    webb-writer: 0.0.1
