@@ -1,14 +1,14 @@
 package:
   name: webb-sql
   dependencies:
-    - console
-    - prelude
     - aff
     - arrays
+    - console
     - effect
     - foldable-traversable
     - maybe
     - monad-loops
+    - prelude
     - strings
     - transformers
     - tuples
