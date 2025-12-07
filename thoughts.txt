@@ -93,7 +93,7 @@ grandParent :: String -> Query
 grandParent id = 
 
 simpleHuman :: ActiveRecord
-simpleHuman = activeRecord "SimpleHuman" human do
+simpleHuman = activeRecord "SimpleHuman" "humans" do
   "id" := "id"
   ...
   "grandparent" := subquery "select gp.id, gp.name from ..." >> asOne "SimpleHuman"
@@ -124,11 +124,115 @@ allSports = query """
   """
 ```
 
-What we obtain is a formally desscribed query. We did not include the names of the tables, since we will join with those tables later. We also have the 'this' concept, to represent an input object with values -- by comparing the min value to specific database fields, we end up able to infer its type from what we compared it to; in sophisticated future cases, we might even widen the type for things like numerical comparisons.
+What we obtain is a formally described query. We did not include the names of the tables, since we will join with those tables later. We also have the 'this' concept, to represent an input object with values -- by comparing the min value to specific database fields, we end up able to infer its type from what we compared it to; in sophisticated future cases, we might even widen the type for things like numerical comparisons.
   Anyway, this query is largely executed as-is, with the exception of being parameterized, and of becoming a function that might do particular type conversions. In so doing, we can take the query and execute it at runtime to obtain an iterable cursor for us to go over the results. We can't edit them, but we can extract data on this basis and use it to build ActiveRecord objects with results -- in particular, we rely on the generation of ActiveRecord constructors that enable us to create an empty ActiveRecord from a base of data, for later insertion.
   That's probably the best we can do for queries -- we cannot guarantee modification of the data in any way for arbitrary queries, but we can guarantee type-checked queries and generation of functions that produce Queries that can be instantiated and run.
-  
-  
 
+So we have tables, ActiveRecords, and Queries. What it means is that writing the database code can all be done in a limited DSL, that minimizes typing. The question, then, is this: How does it all get put together? How would we expect to compile it and write it to file? 
+  Well, unlike when we parse and compile a file, we don't have any compiler state that is obtained by walking an AST. Instead, we have most of our compile state externally. So to compile, we need to build the key compiler state, which is the tables and ActiveRecords and queries. We need to know _everything_ that exists.
+
+```
+do
+  compiler <- newCompiler 
+    { tables: [...]
+    , records: [...]
+    , queries: [...]
+    }
+```
+   
+The compiler is loaded with this data. It thus have the ability to validate _everything_ at this point. Calling `validate compiler` can step through the tables to validate them, then through the records and the queries as well, following references where necessary to look up other records, or other queries, by name, and typechecking everything, publishing errors where needed. Any SQL queries can be parsed and compiled and checked as well, at this stage.
+  Thus, the compiler can perform all the static checks. It then needs, or wants, to _write_ queries. Now, we can do this in one of two ways. First, we can do it manually. We can submit each individual table to the compiler, and each individual query, and use the File API to choose a destination directory and destination file. We can have the compiler AssertProjectRoot, and call `compiler.done` at the end to verify that all the included tables, records, and queries were submitted for compilation to a string, even if we don't know to-where they were written.
+  But as is usually the case, this is a pain in the ass. We can automate this. We can specify an output directory and a base-prefix module, and then start default generation from there. For simplicity's sake, we can place all initial types in a "Class" file, so that it can be shared everywhere. We can define all tables in a "Tables" file, since their types are also used everywhere, and define a single "createTables" function that will set up all tables for the database. ActiveRecords may also reference each other, producing each other in relationships, so they _also_ have to be defined in one file, "Records". And finally, queries will likely reference tables, and produce output data types of their own, so they get their own files as well, and receive their own separate names for each query.
+  So rather surprisingly, perhaps, it's easiest to group initial group definitions according to how types reference each other.
+  Once all initial definitions are done, _exports_ can be generated so that particular types are grouped together. So for example, a "Device" file might be generated with basic operations on the Device table itself (besides creating everything). Alternatively, although we might _define_ all types in single files like Queries, Records, and Tables, all the _implementations_ do get separated -- so all the subsequent DeviceRecord functionality goes in a "DeviceRecord" file. Yes, that seems correct.
+  Likewise, we might expect Queries to belong to a particular type, since they don't belong to tables, so that multiple queries for the same Type can be grouped together. For example, we might define 
+
+```
+sportAndLeague :: QueryType
+sportAndLeague = queryType "SportAndLeague" do
+  field "name" do string
+  field "age" do int *> nil
+  
+allSportsAndLeague :: Query
+allSportsAndLeague = query "SportAndLeague" 
+  """
+  select ...
+  """
+```
+
+The query would thus be type-checked against the type, instead of generating an anonymous type for every individual query. "SportAndLeague" would therefore become its own separate file, for all queries related to it.
+  In this way, we can define all the aspects of the database, and nevertheless generate according to the resulting types that are produced, while performing type-checking and schema-checking.
+  
+Finally, migrations. Migrations are a bit bizarre here. To enable them, we try to expose our code to _only_ the ActiveRecords and Query types, so that a migration can occur without affecting the public API of the database. However, perhaps this isn't always possible. Under what conditions is it possible? Under what conditions is it not?
+  It's possible if we _add_ a field. But if we add a not-null field, we have a problem -- it won't have a value, so how can we add the field? SQL generaly provides an "Alter Table" statement that can be used to rename, add, or delete columns, or to modify a column's datatype. Or we can rename the table entirely. But it's never easy, and not all schema changes are actually simple. So can we auto-migrate, or do we need specific steps to be executed for a given table?
+  It's hard to say that we can auto-migrate. Even for default values, it isn't necessarily simple to do so -- adding a new non-null column will REQUIRE a default value for the database. And it's possible that a column might need a _calculated_ value based on the existing row -- that isn't necessarily simple, either, but makes a default value possibly _invalid_ entirely, unless we use a default value at first, and then turn it off afterward.
+  In other words ... it's necessarily messy. An auto-migration might not actually be possible, in which case we should be able to easily specify a sequence of manual steps to perform the migration ... but if we do so, how can we be sure that things still typecheck, in the end? How can we be sure that our proposed migration steps actually accomplish what we want? 
+
+Well, there's a few things.
+
+- First, there's the runtime schema. It is certainly possible for us to 
+  verify that _after_ the schema changes, the final, new schema is correct. It's 
+  also possible (necessary?) to verify that the _initial_ schema is the 
+  expected schema.
+- Second, schema changes can occur as part of a transaction, always, to avoid   
+  interruptions that ruin corrupt the database.
+- Third, at compile-time, we have the initial schema and the target schema. 
+  So we _know_ what changes need to be made. In one form or another, we should be 
+  able to analyze the proposed actions to verify that they are sequenced correctly, 
+  and that all the desired schema changes are carried out. Which means that migrations 
+  need a clear set of descriptors for schema changes that are just _data_, so we can 
+  analyze them.
+  
+But just this isn't enough for migrations. We need to be able to specify _versions_. And more than that, we need to be able to able to specify and store the _list_ of version changes, so that no matter how many schema changes we make, and no matter the starting schema on the device, when the database update finally happens, it follows the same path as _all_ other devices, so we don't see varying behavior based on multiple different paths. We have one consistent path through the versions. But how do we store the versions?
+  Operationally, the version for generating queries _must_ be the latest one. And we can _specify_ that version, too. But the migration path code is almost a _separate_ runtime than the operational code that we're generating for the database. But for a migration, because multiple tables might be involved in one version change, and certain tables might have to be migrated in particular orders ... what do we do? Do we need to store _all_ the tables? Or just the changed tables? What should occur? What actually needs to be stored?
+  App versions like this really need to be stored in _separate_ files -- that's how large they are. Something like 
+
+```
+schema1 :: Schema
+schema1 = version 1 
+  [ devices
+  , tuners
+  , humans ...
+  ]
+```
+
+The schema will list the version and all the tables, which are defined in the same file
+as the schema. Then, in a separate Implementation file, we choose a schema version, and _through_ it, we use all the tables. In a separate Migrations file, we import all the schema versions, and use them to write a "migrations" script. A migration is required for _each_ schema version, and all schema from 1 to N are required to be part of the build process, and only tables from _1_ schema are allowed to be part of the Implementation. In each new schema version, the prior number must be imported, and we describe a migration as follows:
+
+```
+schema2 :: Schema
+schema2 = version 2
+  [ devices
+  , ...
+  ]
+  $ from (schema 1) migrate
+  
+migrate :: Migration
+migrate = migration do
+  dropTable "devices"
+  alterColumn "tuner.name" ...
+  addColumns "scanner" do
+    field "maxTries" do int *> tempDefault 3
+
+  updateEach "scanner" $ trimMargin """
+  | setDefaults :: Scanner -> Scanner
+  | setDefaults s = s { maxTries = s.minTries + 5 }
+  
+  defineQuery "allAges" "select abc ..."
+
+  updateEachWithDb "scanner" $ trimMargin """
+  | setDefaults :: Db -> Scanner -> Aff Scanner
+  | setDefaults db = do
+      query db allAges \s -> do
+        ...
+      pure newScanner
+  """
+```
+
+As you can see above, generating the migration file may involve defining arbitrary functions using the generated runtime types that _don't_ exist yet. But that's just the way it is -- there's no other way it could be; the second compilation phase will catch any errors we make in defining the migration function.
+  Of course, this is hardly ideal. It's very, very much not ideal, but for each scanner, we can still write queries to grab values at runtime (potentially) for updating each value, as needed. It's ... difficult to do certain things this way, though, since we are missing particular types. We _might_ allow definition of models here for the express purpose of pre- and post- operations for migrations.
+
+  But the above certainly isn't conceptually clean, and is hard to use to ensure that migrations achieve all the desired steps for performing the transition. 
+  WILL HAVE TO THINK ON THIS MORE.
 
 
