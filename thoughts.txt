@@ -1,0 +1,134 @@
+
+Okay. So now we'd like to write thoughts about code-generation for SQL. What are we trying to do? Well, we're trying to to make it easy to define tables, as a first step. That means writing something like 
+
+```
+device :: Table
+device = table "devices" do
+  field "name" do
+    string
+    
+  field "nickname" do
+    string *> nil
+    
+  field "address" do
+    string *> primary
+    
+exercise :: Table
+exercise = table "exercises" do
+  field "id" do
+    int *> primary
+
+  field "name" do
+    string
+  
+  field "device" do
+    string *> foreign "devices" "address"
+    
+human :: Table
+human = table "humans" do
+  field "id" do int
+  
+  field "name" do string
+    
+  field "height" do int 
+    
+  field "parent" do int *> nil
+    
+  primaryKey [ "id", "name"]
+
+  foreignKey [ "parent" ]
+```
+
+The above defines a bunch of tables, using a Table DSL and a Field DSL. It all builds up to a Table data structure, which has a list of fields and primary/foreign key definitions. Defining the tables, and their relations to each other, is a _minimum_ step in defining a database -- and we do it all in the runtime, so that we can analyze it. We can now add each table to a builder, and pass it into a verification phase -- to verify field attributes, to verify that foreign keys exist, and to verify that all attributes are in valid combinations, and not over-specified, and to verify that multiple fields aren't specified, and to _force_ the specification of a single primary key for every table, so that primary keys always exist.
+
+Based on the table definitions, we can then turn each table into a create statement, either for pure SQL as a (parameterized?) query, or into a full set of purescript statements, defining a DeviceTable and a function for creating the table if it doesn't exist. All of it would proceed from the table definition, and we could then use it to define the table in the generated script.
+
+```
+create :: Table -> PsName -> PsString
+create table name = implementation
+
+write file $ create device "DeviceTable"
+```
+
+Thereafter, then, we would have a basis for submitting simple records to the database. Which is all well, and good, but frequently we want to do more. We want to autogenerate complex representations of the data that can _still_ be submitted to the database to be inserted or saved. So how can we do so, given that most of our fields are going to be non-null? Well, we can allow specification of default values at the field level:
+
+```
+field "name" do
+  string *> default "NO NAME"
+```
+
+And while that may have no concept within the database itself, it does have a role when it comes to the definitions of _everything_ else, because when we now define more complex data based on the table, the default value will be available. So for example, if a field has no default value yet is _omitted_ in some way from the complex type, then the database compilation process will err -- no default value for a non-null field means no insertion process can be defined for the complex type.
+  But if we have default values, it means we can now _omit_ fields from our complex data types. Great; that reduces the burden. So what kind of complex data can we define? Well, we can define simple remaps of fields:
+
+```
+simpleHuman :: ActiveRecord
+simpleHuman = activeRecord "SimpleHuman" device do
+  "id" := "id"
+  "fullName" := "name"
+  "pounds" := "weight"
+  
+  default "height" 7
+```
+
+This lets us produce what is essentially an "active record" piece of data -- a data item thats us expose a subset of the fields for a data item, to make it easier to work with in application code, because we are only worked with _some_ fields. We can also change the database defaults for a given type, like "height" in the above example. If the default value is the wrong type for the field, then the compilation process will catch this. 
+  Note that primary keys MUST appear on the ActiveRecord, since we need enough data to save the ActiveRecord back to the table, for updates, in most cases.
+  But who don't typically only want a few useless fields. We also often want _relational_ fields in some way. A Human might want to see parent and grandparent, if they exist. How do we ensure that? This is a join, but it's a join to produce, recursively, a SimpleHuman that contains a SimpleHuman, in terms of type. We might
+write 
+
+```
+simpleHuman :: ActiveRecord
+simpleHuman = activeRecord "SimpleHuman" device do
+  "id" := "id"
+  ...
+  "parent" := one "SimpleHuman" >> from "parentId"
+  "children" := many "SimpleHuman" >> from "parentId" >> match "id"
+```
+
+The `one ... from` and `many ... from` descriptors allow us to specify simple relationsips that are based on simple joins between two tables, where the tables are inferred from the backing table for the ActiveRecord, and the joined item is obtained from foreign keys, which we can compile to _verify_ are actually foreign keys. By default, the foreign key will go to the primary key, but we can use `match` to override the field used, if we want a separate "unique" field to be used instead.
+
+However, we often want more-complex kinds of queries and data, like what I said before about grandparents, or even grandchildren. How would we handle a double-query, and multiple-join, that is needed to get that data? In the case above, we can walk the parent and child tree, but suppose we don't want to. More generally, how do we conceive of data that relies on joins? Well, in that case, SQL joins are the best way to express this. But for this to be efficient, instead of querying once per in the database, what would we have to do? We would have to describe how the foreign item was obtained, possibly for multiple foreign tables --- but this time, we can check parse and check the query on our own.
+
+```
+grandParent :: String -> Query 
+grandParent id = 
+
+simpleHuman :: ActiveRecord
+simpleHuman = activeRecord "SimpleHuman" human do
+  "id" := "id"
+  ...
+  "grandparent" := subquery "select gp.id, gp.name from ..." >> asOne "SimpleHuman"
+  "grandchildren" := subquery "select gc.id, gc.name from ..." >> asMany "SimpleHuman"
+```
+
+It thus becomes clear that the ActiveRecord may be exposing _multiple_ relationships at once to the simple human. We may be executing the queries immediately -- and with one-from and many-from, it may make out, since we might be able to perform one or more inner joins to get the right result (maybe?). But if we're not, we may necessarily have to syncronously perform the query when the collection is accessed -- performing the query once for each human that is accessed. There may be no other choice.
+
+But we have to be careful anyway -- we can, in theory, pull _all_ data from the simple human query, as many queries have to be performed to get the children. Likewise, since parents is open-ended, we might end up pulling all _parents_ as well. In that sense, recursive data is dangerous -- and thus, relationships cannot truly be exposed data that we edit from the relationship itself.
+
+And that's good. It answers an important question about relationships, because the _update_ of relationships as data is tricky, because we then have to merge it with the current items in the database, which is no easy feat, since the merge may be complex -- the total items being sent back may have extra members compared to the old items, or fewer items -- what does that mean? It's hard to say. So if relationships _cannot_ be data, but are instead some kind of cursor that pulls out the typed data on request, then there is no issue, and we are capable of doing a few different things. First, we can iterate throughout all the data, performing an action on each one. Second, we can do so _repeatedly_ when need to go through the data again. This isn't needed for any "one" relationship, but it's useful for any "many" relationship. And for special kinds of relationships, where the relationship is direct in a well-defined way, using `one...from` or `many...from`, or using a defined many-to-many table, we can add to the relationship directly using something like `relate rel new`. Which will add to the relationship, and _now_, whenever the relationship query is used for iteration again, it will fetch the newly added value. This goes for both one and many relations. This is much more difficult for the special-queries that don't have special metadata -- but that's unavoidable, and just a necessary consequence. Those queries are ReadonlyRel objects, so they can be used to read, but something more complex is needed to add to them, because the complex query relationship makes things more difficult.
+  Notice as well the `asOne SimpleHuman` in the example above. We specify a query, but we can (and must) specify if we are trying to make it one, or many, so that the raw database data is hidden behind a type. This will be determined by analysis of the query -- the fields in the query _must_ come from the right table and match the table. 
+  
+Alternatively, we can allow "select gc.*" so that we specify the table, and allow the type to select the fields for the ActiveRecord type.
+
+Also, in such a complex relationship -- how are the relationships updated? Because it's conceivable that that data we pull out will be old -- if it goes back in without a version number, it will overwrite old relationship data -- either by deleting new data, or inserting old data; either way, the relationship is not an accurate way of representing the data -- it is merely a snapshot. And so what really happens is that the relationship data must _track_ what has been added or removed from the original data, to track what changes are made to the relationship data. But that becomes excessively complex.
+
+Now, the above is fine if all we want to do is quickly define ActiveRecord objects. It's easy, in the sense that we can quickly get simple and reasonable APIs, while type-checking the production of these APIs against each other. This may be enough for most cases. But what happens when we want more-complex representations than that? The ActiveRecord API is fine for modifying an individual record, but it's very difficult to turn it into other, more-flattened data types. What do we do? 
+  Well, I suspect that for most cases, it's better to do nothing. There's no reason to try to force a strange DSL for a general data-mapped object type -- although we could try, it's hard to see how that would work, unless it's just concatenaning ActiveRecords together to act as one record. Which is possible, but not useful. Instead, what we need is the power of queries more generally, to obtain data from the database in the desired form, _even if_ we can't reasonably modify and update it through any means. We need generalized readonly queries for the purpose of having data sources that are well-typed despite being written in SQL. Thus, we would write 
+
+```
+allSports :: Query
+allSports = query """
+  SELECT s.name, s.phone, s.minAge l.name FROM
+    sports s JOIN league l on s.league = l.id
+    WHERE
+    s.player_count > this.minCount
+  """
+```
+
+What we obtain is a formally desscribed query. We did not include the names of the tables, since we will join with those tables later. We also have the 'this' concept, to represent an input object with values -- by comparing the min value to specific database fields, we end up able to infer its type from what we compared it to; in sophisticated future cases, we might even widen the type for things like numerical comparisons.
+  Anyway, this query is largely executed as-is, with the exception of being parameterized, and of becoming a function that might do particular type conversions. In so doing, we can take the query and execute it at runtime to obtain an iterable cursor for us to go over the results. We can't edit them, but we can extract data on this basis and use it to build ActiveRecord objects with results -- in particular, we rely on the generation of ActiveRecord constructors that enable us to create an empty ActiveRecord from a base of data, for later insertion.
+  That's probably the best we can do for queries -- we cannot guarantee modification of the data in any way for arbitrary queries, but we can guarantee type-checked queries and generation of functions that produce Queries that can be instantiated and run.
+  
+  
+
+
+
