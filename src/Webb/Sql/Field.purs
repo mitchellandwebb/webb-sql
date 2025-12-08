@@ -8,7 +8,7 @@ type Field =
   , attrs :: Array Attr
   }
   
-data Attr = Nil | FieldType FieldType | Primary | Unique | Foreign ForeignKey
+data Attr = Nil | FieldType FieldType | Primary | Unique | Foreign ForeignKey | Default Void
 
 data FieldType = Integer
   | Text
@@ -54,14 +54,14 @@ nil = addLast Nil
 unique :: FieldM
 unique = addLast Unique
 
+default :: forall a. a -> FieldM
+default v = addLast $ Default (unsafeCoerce v)
+
 primaryKey :: FieldM
 primaryKey = addLast Primary
 
-foreignKey :: String -> FieldM
-foreignKey spec = do
-  let splits = String.split (Pattern ".") spec
-      table = unsafeIndex 0
-      field = unsafeIndex 1
+foreignKey :: String -> String -> FieldM
+foreignKey table field = do
   addLast $ Foreign { table, field }
 
 
