@@ -25,13 +25,6 @@ type ForeignKey =
   , ref :: { table :: String, field :: String }
   }
   
-data Attr = Nil | FieldType FieldType
-
-data FieldType = Integer
-  | Text
-  | Real
-  | Bool
-  
 empty :: Table 
 empty = 
   { name: ""
@@ -42,3 +35,9 @@ empty =
   
 type TableM' a = State Table a
 type TableM = TableM' Unit
+
+table :: String -> TableM -> Table
+table name prog = let 
+  t = execState prog $ empty { name = name }
+  in t
+  
