@@ -80,8 +80,8 @@ simpleHuman :: ActiveRecord
 simpleHuman = activeRecord "SimpleHuman" device do
   "id" := "id"
   ...
-  "parent" := one "SimpleHuman" >> from "parentId"
-  "children" := many "SimpleHuman" >> from "parentId" >> match "id"
+  "parent" := local "SimpleHuman" "parentId"
+  "children" := many "SimpleHuman" "parentId"
 ```
 
 The `one ... from` and `many ... from` descriptors allow us to specify simple relationsips that are based on simple joins between two tables, where the tables are inferred from the backing table for the ActiveRecord, and the joined item is obtained from foreign keys, which we can compile to _verify_ are actually foreign keys. By default, the foreign key will go to the primary key, but we can use `match` to override the field used, if we want a separate "unique" field to be used instead.
@@ -96,8 +96,8 @@ simpleHuman :: ActiveRecord
 simpleHuman = activeRecord "SimpleHuman" "humans" do
   "id" := "id"
   ...
-  "grandparent" := subquery "select gp.id, gp.name from ..." >> asOne "SimpleHuman"
-  "grandchildren" := subquery "select gc.id, gc.name from ..." >> asMany "SimpleHuman"
+  "grandparent" := queryOne "SimpleHuman "select gp.id, gp.name from ..."
+  "grandchildren" := queryMany "SimpleHuman "select gc.id, gc.name from ..."
 ```
 
 It thus becomes clear that the ActiveRecord may be exposing _multiple_ relationships at once to the simple human. We may be executing the queries immediately -- and with one-from and many-from, it may make out, since we might be able to perform one or more inner joins to get the right result (maybe?). But if we're not, we may necessarily have to syncronously perform the query when the collection is accessed -- performing the query once for each human that is accessed. There may be no other choice.
