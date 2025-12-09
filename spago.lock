@@ -13,6 +13,7 @@
             "maybe",
             "monad-loops",
             "prelude",
+            "profunctor-lenses",
             "strings",
             "transformers",
             "tuples",
