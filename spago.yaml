@@ -17,6 +17,7 @@ package:
     - webb-refer
     - webb-monad
     - webb-writer
+    - webb-stateful
 
   test:
     main: Test.Main
@@ -35,3 +36,4 @@ workspace:
     webb-refer: 0.0.2
     webb-monad: 0.0.2
     webb-writer: 0.0.1
+    webb-stateful: 0.0.1

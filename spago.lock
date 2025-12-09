@@ -19,6 +19,7 @@
             "unsafe-coerce",
             "webb-monad",
             "webb-refer",
+            "webb-stateful",
             "webb-test",
             "webb-writer"
           ],
@@ -102,6 +103,7 @@
             "unsafe-coerce",
             "webb-monad",
             "webb-refer",
+            "webb-stateful",
             "webb-test",
             "webb-writer"
           ]
@@ -729,6 +731,7 @@
       "spec-discovery": "8.2.0",
       "webb-monad": "0.0.2",
       "webb-refer": "0.0.2",
+      "webb-stateful": "0.0.1",
       "webb-test": "0.0.1",
       "webb-writer": "0.0.1"
     }
@@ -1831,6 +1834,23 @@
         "refs",
         "transformers",
         "tuples"
+      ]
+    },
+    "webb-stateful": {
+      "type": "registry",
+      "version": "0.0.1",
+      "integrity": "sha256-0R+cYjNBsnzCKpd4ZdUsbYXDWVyr/Wkdj2Hzy3+xv1Q=",
+      "dependencies": [
+        "arrays",
+        "effect",
+        "foldable-traversable",
+        "lists",
+        "maybe",
+        "ordered-collections",
+        "prelude",
+        "tuples",
+        "webb-monad",
+        "webb-refer"
       ]
     },
     "webb-test": {
