@@ -34,6 +34,8 @@ import Webb.Sql.Query.Token (Token, TokenType(..))
 type Parser a = T.Parser a
 type StringParser a = P.Parser String a
 
+data Query
+
 type Select =
   { columns :: Array Column
   }
@@ -46,6 +48,18 @@ data ValueExpr
   = Field ColumnName
   | Call { name :: Token, args :: Array ValueExpr }
   | Prim Literal
+  | Wildcard
+  
+type Where =
+  { join :: Join
+  }
+  
+data Join 
+  = Table { table :: Token, alias :: Token }
+  | Join { kind :: JoinType, table1 :: Join, table2 :: Join }
+  | SubQuery Query
+  
+data JoinType = InnerJoin | OuterJoin | LeftJoin | RightJoin
   
 type IntegerLit = 
   { token :: Token
