@@ -3,15 +3,15 @@ module Webb.Sql.Query.Token where
 import Prelude
 
 import Control.Alt ((<|>))
-import Data.Maybe (Maybe(..))
 import Data.String as Str
+import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (sequence)
-import Parsing (Position(..), fail, failWithPosition, position)
+import Parsing (Position(..))
 import Parsing as P
 import Parsing.Combinators (try)
 import Parsing.Combinators.Array as PC
 import Parsing.String (string)
-import Parsing.String.Basic (upper)
+import Parsing.String.Basic as PB
 
 {- Since SQL does not care about case, we tokenize to eliminate string differences, and to make clear the actual tokens we are working with.
 -}
@@ -37,61 +37,60 @@ data TokenType
   | GTE
   | LT
   | LTE
-  | EQ
+  | EQUAL
   | ON
   | IDENT 
   
-newtype Token = TP 
-  { line :: Int
+type Token =
+  { index :: Int
+  , line :: Int
   , column :: Int
   , columnEnd:: Int
   , string :: String
   , kind :: TokenType
   }
   
-class Convert a where
-  isIdentifier :: a -> Boolean
-  
-instance Convert Token where
-  isIdentifier (TP parse) = case parse.kind of
-    SELECT -> true
-    FROM -> true
-    WHERE -> true
-    ON -> true
-    IDENT -> true
-    GROUP -> true
-    ORDER -> true
-    BY -> true
-    INNER -> true
-    OUTER -> true
-    JOIN -> true
-    LEFT -> true
-    RIGHT -> true
-    THIS -> false
-    DOT -> false
-    LEFT_PAREN -> false
-    RIGHT_PAREN -> false
-    LIKE -> true
-    GT -> false
-    GTE -> false
-    LT -> false
-    LTE -> false
-    EQ -> false
+isIdentifier :: Token -> Boolean
+isIdentifier (parse) = case parse.kind of
+  SELECT -> true
+  FROM -> true
+  WHERE -> true
+  ON -> true
+  IDENT -> true
+  GROUP -> true
+  ORDER -> true
+  BY -> true
+  INNER -> true
+  OUTER -> true
+  JOIN -> true
+  LEFT -> true
+  RIGHT -> true
+  THIS -> false -- this can't be an identifier. It's a special keyword.
+  DOT -> false
+  LEFT_PAREN -> false
+  RIGHT_PAREN -> false
+  LIKE -> true
+  GT -> false
+  GTE -> false
+  LT -> false
+  LTE -> false
+  EQUAL -> false
     
 -- Parse small strings into tokens.
 type Parser = P.Parser String
 
 forToken :: TokenType -> Parser String -> Parser Token
-forToken kind prog = do
+forToken kind prog = try do
   old <- getPosition
   str <- prog
   new <- getPosition
-  pure $ TP
+  pure $ 
     { line: old.line
     , column: old.column
     , columnEnd: new.column
     , string: str
     , kind
+    , index: old.index
     }
   
   where 
@@ -174,11 +173,31 @@ lte :: Parser Token
 lte = forToken LTE do anyCase "<="
 
 equal :: Parser Token
-equal = forToken EQ do anyCase "="
+equal = forToken EQUAL do anyCase "="
 
 on :: Parser Token
 on = forToken ON do anyCase "on"
 
+-- Identifier starts with a letter, then can be letters, numbers, or
+-- underscores
 ident :: Parser Token
 ident = forToken IDENT do
-  pure "hello"
+  first <- letter
+  rest <- PC.many letterNumUnderscore
+  let string = Str.joinWith "" $ [first] <> rest
+  pure string
+  
+  where
+  letter :: Parser String
+  letter = try do
+    char <- PB.letter
+    pure $ fromCharArray [char]
+    
+  letterNumUnderscore = try do
+    char <- try alphaNum <|> try (string "_")
+    pure char
+    
+  alphaNum = try do
+    char <- PB.alphaNum
+    pure $ fromCharArray [char]
+    
