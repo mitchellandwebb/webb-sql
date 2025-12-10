@@ -5,15 +5,13 @@ import Prelude
 import Control.Alt ((<|>))
 import Data.Array as A
 import Data.Either (Either(..))
-import Data.Identity (Identity)
-import Data.List (List)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Set as Set
 import Data.String as Str
 import Data.String.CodeUnits (fromCharArray)
 import Data.Tuple.Nested ((/\))
-import Parsing (ParserT, Position(..), fail)
+import Parsing (fail)
 import Parsing as P
 import Parsing.Combinators (try, option, optionMaybe, sepBy1)
 import Parsing.Combinators.Array as PC
@@ -56,7 +54,7 @@ type Where =
   
 data Join 
   = Table { table :: Token, alias :: Token }
-  | Join { kind :: JoinType, table1 :: Join, table2 :: Join }
+  | Join { kind :: JoinType, table1 :: Join, table2 :: Join, on :: ValueExpr }
   | SubQuery Query
   
 data JoinType = InnerJoin | OuterJoin | LeftJoin | RightJoin
