@@ -33,6 +33,8 @@ data TokenType
   | RIGHT
   | THIS
   | LIMIT
+  | ASC
+  | DESC
   | COMMA
   | STRING
   | NUMBER
@@ -80,6 +82,8 @@ isIdentifier (parse) = case parse.kind of
   LEFT -> true
   RIGHT -> true
   LIMIT -> true
+  ASC -> true
+  DESC -> true
   THIS -> false -- this can't be an identifier. It's a special keyword.
   COMMA -> false
   STAR -> false
@@ -210,6 +214,12 @@ this = forToken THIS do anyCase "this"
 
 limit :: Parser Token
 limit = forToken LIMIT do anyCase "limit"
+
+asc :: Parser Token
+asc = forToken ASC do anyCase "asc"
+
+desc :: Parser Token
+desc = forToken DESC do anyCase "desc"
 
 dot :: Parser Token
 dot = forToken DOT do anyCase "."

@@ -88,6 +88,12 @@ like = hasType LIKE
 limit :: Parser Token
 limit = hasType LIMIT
 
+asc :: Parser Token
+asc = hasType ASC
+
+desc :: Parser Token
+desc = hasType DESC
+
 gt :: Parser Token
 gt = hasType GT
 
