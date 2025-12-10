@@ -91,6 +91,9 @@ doubleQ = hasType DOUBLE_Q
 like :: Parser Token
 like = hasType LIKE
 
+limit :: Parser Token
+limit = hasType LIMIT
+
 gt :: Parser Token
 gt = hasType GT
 

@@ -31,6 +31,7 @@ data TokenType
   | LEFT
   | RIGHT
   | THIS
+  | LIMIT
   | COMMA
   | DOT
   | STAR
@@ -76,6 +77,7 @@ isIdentifier (parse) = case parse.kind of
   JOIN -> true
   LEFT -> true
   RIGHT -> true
+  LIMIT -> true
   THIS -> false -- this can't be an identifier. It's a special keyword.
   COMMA -> false
   STAR -> false
@@ -146,6 +148,7 @@ token = try do
     leftParen <|>
     rightParen <|>
     like <|>
+    limit <|>
     gt <|>
     gte <|>
     lt <|>
@@ -204,11 +207,14 @@ right = forToken RIGHT do anyCase "right"
 this :: Parser Token
 this = forToken THIS do anyCase "this"
 
+limit :: Parser Token
+limit = forToken LIMIT do anyCase "limit"
+
 dot :: Parser Token
 dot = forToken DOT do anyCase "."
 
 star :: Parser Token
-star = forToken DOT do anyCase "*"
+star = forToken STAR do anyCase "*"
 
 comma :: Parser Token
 comma = forToken COMMA do anyCase ","
