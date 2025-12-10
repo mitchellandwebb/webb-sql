@@ -19,6 +19,7 @@ package:
     - webb-writer
     - webb-stateful
     - profunctor-lenses
+    - parsing
 
   test:
     main: Test.Main
