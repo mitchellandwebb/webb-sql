@@ -3,16 +3,17 @@ module Webb.Sql.Query.Token where
 import Prelude
 
 import Control.Alt ((<|>))
+import Data.Array as A
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 import Data.String as Str
 import Data.String.CodeUnits (fromCharArray)
-import Data.Traversable (sequence)
-import Parsing (Position(..))
+import Data.Traversable (class Foldable, sequence)
+import Parsing (Position(..), fail)
 import Parsing as P
-import Parsing.Combinators (try)
+import Parsing.Combinators (try, option)
 import Parsing.Combinators.Array as PC
-import Parsing.String (string)
+import Parsing.String as PS
 import Parsing.String.Basic as PB
 
 {- Since SQL does not care about case, we tokenize to eliminate string differences, and to make clear the actual tokens we are working with.
@@ -33,10 +34,11 @@ data TokenType
   | THIS
   | LIMIT
   | COMMA
+  | STRING
+  | NUMBER
+  | BOOLEAN
   | DOT
   | STAR
-  | SINGLE_Q
-  | DOUBLE_Q
   | LEFT_PAREN
   | RIGHT_PAREN
   | LIKE
@@ -82,8 +84,9 @@ isIdentifier (parse) = case parse.kind of
   COMMA -> false
   STAR -> false
   DOT -> false
-  SINGLE_Q -> false
-  DOUBLE_Q -> false
+  STRING -> false
+  NUMBER -> false
+  BOOLEAN -> false
   LEFT_PAREN -> false
   RIGHT_PAREN -> false
   LIKE -> true
@@ -143,8 +146,6 @@ token = try do
     dot <|>
     comma <|>
     star <|>
-    singleQ <|>
-    doubleQ <|>
     leftParen <|>
     rightParen <|>
     like <|>
@@ -168,7 +169,7 @@ anyCase str = try do
   lowerOrUpper char = try do
     let upper = Str.toUpper char
         lower = Str.toLower char
-    try (string lower) <|> try (string upper)
+    try (PS.string lower) <|> try (PS.string upper)
 
 -- The select token. It allows for any case variation of the word "select"
 select :: Parser Token
@@ -219,17 +220,82 @@ star = forToken STAR do anyCase "*"
 comma :: Parser Token
 comma = forToken COMMA do anyCase ","
 
-singleQ :: Parser Token
-singleQ = forToken SINGLE_Q do anyCase "'"
-
-doubleQ :: Parser Token
-doubleQ = forToken DOUBLE_Q do anyCase "\""
-
 leftParen :: Parser Token
 leftParen = forToken LEFT_PAREN do anyCase "("
 
 rightParen :: Parser Token
 rightParen = forToken RIGHT_PAREN do anyCase ")"
+
+-- SELECT 'abc' FROM...
+-- SELECT "abc" FROM...
+stringLit :: Parser Token
+stringLit = forToken STRING do
+  try singleQ <|> try doubleQ
+  where
+  singleQ = try do
+    let delim = PS.string "\""
+    s1 <- delim
+    str <- contents 
+    s2 <- delim
+    pure $ Str.joinWith "" [s1, str, s2]
+  
+  doubleQ = try do
+    let delim = PS.string "\'"
+    s1 <- delim
+    str <- contents
+    s2 <- delim
+    pure $ Str.joinWith "" [s1, str, s2]
+    
+  contents = try do
+    strings <- PC.many stringChar
+    pure $ Str.joinWith "" strings
+    
+  stringChar = try do
+    try escaped <|> try (reject "\"" anyChar)
+    
+  escaped = try do
+    start <- PS.string "\\"
+    char <- anyChar
+    pure $ Str.joinWith "" [ start, char ]
+    
+  anyChar = try do
+    char <- PS.anyChar
+    pure $ fromCharArray [char]
+    
+-- 1.0, +1, -1.0, 1.0e1, 1E-1.0, 0.3, 00.3
+numberLit :: Parser Token
+numberLit = forToken NUMBER do
+  n1 <- option "" sign
+  n2 <- number
+  n3 <- option "" exponent
+  pure $ Str.joinWith "" [n1, n2, n3]
+  
+  where
+  sign = try (PS.string "+") <|> try (PS.string "-")
+  
+  number = try do
+    first <- fromChars <$> PC.many1 PB.digit
+    dec <- option "" do 
+      dot' <- PS.string "."
+      rest <- fromChars <$> PC.many1 PB.digit
+      pure $ dot' <> rest
+    pure $ first <> dec
+  
+  exponent = try do 
+    e <- (anyCase "e")
+    s <- number
+    pure $ Str.joinWith "" [e, s]
+    
+fromChars :: forall f. Foldable f => f Char -> String
+fromChars chars = fromCharArray $ A.fromFoldable chars
+    
+reject :: forall a. Show a => Eq a => a -> Parser a -> Parser a
+reject a prog = do
+  res <- prog
+  if res == a then do
+    fail $ "Rejected parse: " <> show a
+  else do
+    pure res
 
 like :: Parser Token
 like = forToken LIKE do anyCase "like"
@@ -252,10 +318,25 @@ equal = forToken EQUAL do anyCase "="
 on :: Parser Token
 on = forToken ON do anyCase "on"
 
+-- An identifier can be a Boolean, potentially. So we modify the token
+-- if it was
+ident :: Parser Token
+ident = try do
+  tok <- ident'
+  if isBoolString tok then
+    pure $ tok { kind = BOOLEAN }
+  else 
+    pure $ tok
+    
+  where
+  isBoolString tok = let 
+    s = Str.toLower tok.string
+    in s == "true" || s == "false"
+
 -- Identifier starts with a letter, then can be letters, numbers, or
 -- underscores
-ident :: Parser Token
-ident = forToken IDENT do
+ident' :: Parser Token
+ident' = forToken IDENT do
   first <- letter
   rest <- PC.many letterNumUnderscore
   let string = Str.joinWith "" $ [first] <> rest
@@ -268,7 +349,7 @@ ident = forToken IDENT do
     pure $ fromCharArray [char]
     
   letterNumUnderscore = try do
-    char <- try alphaNum <|> try (string "_")
+    char <- try alphaNum <|> try (PS.string "_")
     pure char
     
   alphaNum = try do

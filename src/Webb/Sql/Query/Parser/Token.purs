@@ -1,4 +1,4 @@
-module Webb.Sql.Query.Parser.Basic where
+module Webb.Sql.Query.Parser.Token where
 
 import Prelude
 
@@ -82,12 +82,6 @@ comma = hasType COMMA
 star :: Parser Token
 star = hasType STAR
 
-singleQ :: Parser Token
-singleQ = hasType SINGLE_Q
-
-doubleQ :: Parser Token
-doubleQ = hasType DOUBLE_Q
-
 like :: Parser Token
 like = hasType LIKE
 
@@ -111,6 +105,15 @@ equal = hasType EQUAL
 
 on :: Parser Token
 on = hasType ON
+
+stringLit :: Parser Token
+stringLit = hasType STRING
+
+numberLit :: Parser Token
+numberLit = hasType NUMBER
+
+booleanLit :: Parser Token
+booleanLit = hasType BOOLEAN
 
 -- An identifier is IDENT, or any token that classifies itself as an identifier.
 ident :: Parser Token
