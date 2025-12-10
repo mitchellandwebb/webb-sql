@@ -49,8 +49,11 @@ data TokenType
   | LT
   | LTE
   | EQUAL
+  | NOT_EQUAL
   | ON
   | IDENT
+  | AND_OP
+  | OR_OP
   
 derive instance Eq TokenType
 derive instance Ord TokenType
@@ -99,6 +102,9 @@ isIdentifier (parse) = case parse.kind of
   LT -> false
   LTE -> false
   EQUAL -> false
+  NOT_EQUAL -> false
+  AND_OP -> false
+  OR_OP -> false
     
 -- Parse small strings into tokens.
 type Parser = P.Parser String
@@ -150,6 +156,8 @@ token = try do
     dot <|>
     comma <|>
     star <|>
+    andOp <|>
+    orOp <|>
     leftParen <|>
     rightParen <|>
     like <|>
@@ -159,8 +167,11 @@ token = try do
     lt <|>
     lte <|>
     equal <|>
+    notEqual <|>
     on <|>
-    ident
+    ident <|>
+    asc <|>
+    desc
     
 -- Parse the string, but try _all_ the possible case variations.
 anyCase :: String -> Parser String
@@ -229,6 +240,12 @@ star = forToken STAR do anyCase "*"
 
 comma :: Parser Token
 comma = forToken COMMA do anyCase ","
+
+andOp :: Parser Token
+andOp = forToken AND_OP do anyCase "&&"
+
+orOp :: Parser Token
+orOp = forToken OR_OP do anyCase "||"
 
 leftParen :: Parser Token
 leftParen = forToken LEFT_PAREN do anyCase "("
@@ -324,6 +341,9 @@ lte = forToken LTE do anyCase "<="
 
 equal :: Parser Token
 equal = forToken EQUAL do anyCase "="
+
+notEqual :: Parser Token
+notEqual = forToken NOT_EQUAL do anyCase "!="
 
 on :: Parser Token
 on = forToken ON do anyCase "on"

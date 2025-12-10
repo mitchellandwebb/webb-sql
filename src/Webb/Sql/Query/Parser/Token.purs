@@ -94,6 +94,12 @@ asc = hasType ASC
 desc :: Parser Token
 desc = hasType DESC
 
+andOp :: Parser Token
+andOp = hasType AND_OP
+
+orOp :: Parser Token
+orOp = hasType OR_OP
+
 gt :: Parser Token
 gt = hasType GT
 
@@ -108,6 +114,9 @@ lte = hasType LTE
 
 equal :: Parser Token
 equal = hasType EQUAL
+
+notEqual :: Parser Token
+notEqual = hasType NOT_EQUAL
 
 on :: Parser Token
 on = hasType ON

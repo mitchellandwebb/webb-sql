@@ -48,9 +48,7 @@ data ValueExpr
   | Prim Literal
   | Wildcard
   
-type Where =
-  { join :: Join
-  }
+type Where = { join :: Join }
   
 data Join 
   = Table { table :: Token, alias :: Token }
