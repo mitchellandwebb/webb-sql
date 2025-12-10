@@ -54,6 +54,10 @@ data TokenType
   | IDENT
   | AND_OP
   | OR_OP
+  | PLUS
+  | MINUS
+  | SLASH
+  | MOD
   
 derive instance Eq TokenType
 derive instance Ord TokenType
@@ -105,6 +109,10 @@ isIdentifier (parse) = case parse.kind of
   NOT_EQUAL -> false
   AND_OP -> false
   OR_OP -> false
+  PLUS -> false
+  MINUS -> false
+  SLASH -> false
+  MOD -> false
     
 -- Parse small strings into tokens.
 type Parser = P.Parser String
@@ -158,6 +166,10 @@ token = try do
     star <|>
     andOp <|>
     orOp <|>
+    plus <|>
+    minus <|>
+    slash <|>
+    mod <|>
     leftParen <|>
     rightParen <|>
     like <|>
@@ -246,6 +258,18 @@ andOp = forToken AND_OP do anyCase "&&"
 
 orOp :: Parser Token
 orOp = forToken OR_OP do anyCase "||"
+
+plus :: Parser Token
+plus = forToken PLUS do anyCase "+"
+
+minus :: Parser Token
+minus = forToken MINUS do anyCase "-"
+
+slash :: Parser Token
+slash = forToken SLASH do anyCase "/"
+
+mod :: Parser Token
+mod = forToken MOD do anyCase "%"
 
 leftParen :: Parser Token
 leftParen = forToken LEFT_PAREN do anyCase "("

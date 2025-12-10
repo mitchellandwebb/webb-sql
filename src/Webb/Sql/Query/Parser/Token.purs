@@ -100,6 +100,18 @@ andOp = hasType AND_OP
 orOp :: Parser Token
 orOp = hasType OR_OP
 
+plus :: Parser Token
+plus = hasType PLUS
+
+minus :: Parser Token
+minus = hasType MINUS
+
+slash :: Parser Token
+slash = hasType SLASH
+
+mod :: Parser Token
+mod = hasType MOD
+
 gt :: Parser Token
 gt = hasType GT
 
