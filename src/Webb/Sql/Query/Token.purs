@@ -3,6 +3,8 @@ module Webb.Sql.Query.Token where
 import Prelude
 
 import Control.Alt ((<|>))
+import Data.Generic.Rep (class Generic)
+import Data.Show.Generic (genericShow)
 import Data.String as Str
 import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (sequence)
@@ -29,7 +31,11 @@ data TokenType
   | LEFT
   | RIGHT
   | THIS
+  | COMMA
   | DOT
+  | STAR
+  | SINGLE_Q
+  | DOUBLE_Q
   | LEFT_PAREN
   | RIGHT_PAREN
   | LIKE
@@ -39,7 +45,12 @@ data TokenType
   | LTE
   | EQUAL
   | ON
-  | IDENT 
+  | IDENT
+  
+derive instance Eq TokenType
+derive instance Ord TokenType
+derive instance Generic TokenType _
+instance Show TokenType where show = genericShow
   
 type Token =
   { index :: Int
@@ -66,7 +77,11 @@ isIdentifier (parse) = case parse.kind of
   LEFT -> true
   RIGHT -> true
   THIS -> false -- this can't be an identifier. It's a special keyword.
+  COMMA -> false
+  STAR -> false
   DOT -> false
+  SINGLE_Q -> false
+  DOUBLE_Q -> false
   LEFT_PAREN -> false
   RIGHT_PAREN -> false
   LIKE -> true
@@ -97,6 +112,47 @@ forToken kind prog = try do
   getPosition = do
     (Position s) <- P.position
     pure s
+    
+-- Turn a string into an array of tokens. We ignore
+-- whitespace intentionally.
+tokens :: Parser (Array Token)
+tokens = do
+  arr <- PC.many do 
+    t <- token
+    PB.skipSpaces
+    pure t
+  pure arr
+
+-- Obtain a single token.
+token :: Parser (Token)
+token = try do 
+  select <|> 
+    from <|>
+    where' <|>
+    order <|>
+    group <|>
+    by <|>
+    inner <|>
+    join <|>
+    outer <|>
+    left <|>
+    right <|>
+    this <|>
+    dot <|>
+    comma <|>
+    star <|>
+    singleQ <|>
+    doubleQ <|>
+    leftParen <|>
+    rightParen <|>
+    like <|>
+    gt <|>
+    gte <|>
+    lt <|>
+    lte <|>
+    equal <|>
+    on <|>
+    ident
     
 -- Parse the string, but try _all_ the possible case variations.
 anyCase :: String -> Parser String
@@ -150,6 +206,18 @@ this = forToken THIS do anyCase "this"
 
 dot :: Parser Token
 dot = forToken DOT do anyCase "."
+
+star :: Parser Token
+star = forToken DOT do anyCase "*"
+
+comma :: Parser Token
+comma = forToken COMMA do anyCase ","
+
+singleQ :: Parser Token
+singleQ = forToken SINGLE_Q do anyCase "'"
+
+doubleQ :: Parser Token
+doubleQ = forToken DOUBLE_Q do anyCase "\""
 
 leftParen :: Parser Token
 leftParen = forToken LEFT_PAREN do anyCase "("
