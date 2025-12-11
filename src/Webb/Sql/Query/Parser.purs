@@ -36,8 +36,8 @@ type Query =
   { select :: Select
   , from :: From
   , where :: Where
-  , orderBy :: Maybe OrderBy
   , groupBy :: Maybe GroupBy
+  , orderBy :: Maybe OrderBy
   , limit :: Maybe Limit
   }
 
@@ -51,6 +51,7 @@ type ColumnName = { table :: Maybe Token, field :: Token }
 
 data ValueExpr
   = Field ColumnName
+  | This { field :: Token }
   | Call { name :: Token, args :: Array ValueExpr }
   | Prim Literal
   | Wildcard { table :: Maybe Token }
@@ -141,7 +142,11 @@ select = do
   
 valueExpr :: Parser ValueExpr
 valueExpr = try do
-  expr <- try field <|> try primitive <|> try wildcard <|> try (call unit)
+  expr <- try field 
+    <|> try primitive 
+    <|> try wildcard 
+    <|> try (call unit)
+    <|> try this
   pure expr
   
   where
@@ -169,6 +174,12 @@ valueExpr = try do
     args <- A.fromFoldable <$> sepBy valueExpr T.comma
     _ <- T.rightp
     pure $ Call { name, args }
+    
+  this = do 
+    _ <- T.this
+    _ <- T.dot
+    field' <- T.ident
+    pure $ This { field: field' }
     
 from :: Parser From
 from = do
