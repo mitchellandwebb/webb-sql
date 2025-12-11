@@ -8,7 +8,7 @@ import Data.List (List)
 import Parsing (ParserT, Position(..), fail)
 import Parsing.Combinators (try)
 import Parsing.Token as T
-import Webb.Sql.Query.Token (Token, TokenType(..), isIdentifier)
+import Webb.Sql.Query.Token (Token, TokenType(..))
 
 {- Basic parsers for each individual string token. -}
 
@@ -142,12 +142,5 @@ numberLit = hasType NUMBER
 booleanLit :: Parser Token
 booleanLit = hasType BOOLEAN
 
--- An identifier is IDENT, or any token that classifies itself as an identifier.
 ident :: Parser Token
-ident = try do 
-  hasType IDENT <|> try do 
-    token <- next 
-    if isIdentifier token then
-      pure token
-    else 
-      fail "Expected an identifier"
+ident = hasType IDENT

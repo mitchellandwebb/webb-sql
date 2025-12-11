@@ -3,7 +3,9 @@ module Webb.Sql.Query.Token where
 import Prelude
 
 import Control.Alt ((<|>))
+import Control.Monad.Error.Class as Err
 import Data.Array as A
+import Data.Either (isRight)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 import Data.String as Str
@@ -11,7 +13,7 @@ import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (class Foldable, sequence)
 import Parsing (Position(..), fail)
 import Parsing as P
-import Parsing.Combinators (try, option)
+import Parsing.Combinators (lookAhead, option, try)
 import Parsing.Combinators.Array as PC
 import Parsing.String as PS
 import Parsing.String.Basic as PB
@@ -73,47 +75,6 @@ type Token =
   , kind :: TokenType
   }
   
-isIdentifier :: Token -> Boolean
-isIdentifier (parse) = case parse.kind of
-  SELECT -> true
-  FROM -> true
-  WHERE -> true
-  ON -> true
-  IDENT -> true
-  GROUP -> true
-  ORDER -> true
-  BY -> true
-  INNER -> true
-  OUTER -> true
-  JOIN -> true
-  LEFT -> true
-  RIGHT -> true
-  LIMIT -> true
-  ASC -> true
-  DESC -> true
-  THIS -> false -- this can't be an identifier. It's a special keyword.
-  COMMA -> false
-  STAR -> false
-  DOT -> false
-  STRING -> false
-  NUMBER -> false
-  BOOLEAN -> false
-  LEFT_PAREN -> false
-  RIGHT_PAREN -> false
-  LIKE -> true
-  GT -> false
-  GTE -> false
-  LT -> false
-  LTE -> false
-  EQUAL -> false
-  NOT_EQUAL -> false
-  AND_OP -> false
-  OR_OP -> false
-  PLUS -> false
-  MINUS -> false
-  SLASH -> false
-  MOD -> false
-    
 -- Parse small strings into tokens.
 type Parser = P.Parser String
 
@@ -200,49 +161,49 @@ anyCase str = try do
 
 -- The select token. It allows for any case variation of the word "select"
 select :: Parser Token
-select = forToken SELECT do anyCase "select"
+select = forToken SELECT do notIdent $ anyCase "select"
 
 from :: Parser Token
-from = forToken FROM do anyCase "from"
+from = forToken FROM do notIdent $ anyCase "from"
 
 where' :: Parser Token
-where' = forToken WHERE do anyCase "where"
+where' = forToken WHERE do notIdent $ anyCase "where"
 
 order :: Parser Token
-order = forToken ORDER do anyCase "order"
+order = forToken ORDER do notIdent $ anyCase "order"
 
 group :: Parser Token
-group = forToken GROUP do anyCase "group"
+group = forToken GROUP do notIdent $ anyCase "group"
 
 by :: Parser Token
-by = forToken BY do anyCase "by"
+by = forToken BY do notIdent $ anyCase "by"
 
 inner :: Parser Token
-inner = forToken INNER do anyCase "inner"
+inner = forToken INNER do notIdent $ anyCase "inner"
 
 join :: Parser Token
-join = forToken JOIN do anyCase "join"
+join = forToken JOIN do notIdent $ anyCase "join"
 
 outer :: Parser Token
-outer = forToken OUTER do anyCase "outer"
+outer = forToken OUTER do notIdent $ anyCase "outer"
 
 left :: Parser Token
-left = forToken LEFT do anyCase "left"
+left = forToken LEFT do notIdent $ anyCase "left"
 
 right :: Parser Token
-right = forToken RIGHT do anyCase "right"
+right = forToken RIGHT do notIdent $ anyCase "right"
 
 this :: Parser Token
-this = forToken THIS do anyCase "this"
+this = forToken THIS do notIdent $ anyCase "this"
 
 limit :: Parser Token
-limit = forToken LIMIT do anyCase "limit"
+limit = forToken LIMIT do notIdent $ anyCase "limit"
 
 asc :: Parser Token
-asc = forToken ASC do anyCase "asc"
+asc = forToken ASC do notIdent $ anyCase "asc"
 
 desc :: Parser Token
-desc = forToken DESC do anyCase "desc"
+desc = forToken DESC do notIdent $ anyCase "desc"
 
 dot :: Parser Token
 dot = forToken DOT do anyCase "."
@@ -349,7 +310,7 @@ reject a prog = do
     pure res
 
 like :: Parser Token
-like = forToken LIKE do anyCase "like"
+like = forToken LIKE do notIdent $ anyCase "like"
 
 gt :: Parser Token
 gt = forToken GT do anyCase ">"
@@ -370,27 +331,41 @@ notEqual :: Parser Token
 notEqual = forToken NOT_EQUAL do anyCase "!="
 
 on :: Parser Token
-on = forToken ON do anyCase "on"
+on = forToken ON do notIdent $ anyCase "on"
 
--- An identifier can be a Boolean, potentially. So we modify the token
--- if it was
-ident :: Parser Token
-ident = try do
-  tok <- ident'
-  if isBoolString tok then
-    pure $ tok { kind = BOOLEAN }
-  else 
-    pure $ tok
-    
+boolean :: Parser Token
+boolean = forToken BOOLEAN do notIdent $ anyCase "true" <|> anyCase "false"
+
+-- Executes the parser. Fails it if the parser is followed by 
+-- an extension as an identifier.
+notIdent :: Parser String -> Parser String
+notIdent prog = try do
+  t <- prog
+
+  -- If followed by a letter, num, or underscore, it's an ident. 
+  whenM (succeeds letterNumUnderscore) do
+    fail "Token is really an identifier"
+
+  pure t
   where
-  isBoolString tok = let 
-    s = Str.toLower tok.string
-    in s == "true" || s == "false"
+  letterNumUnderscore = try do
+    char <- try alphaNum <|> try (PS.string "_")
+    pure char
+    
+  alphaNum = try do
+    char <- PB.alphaNum
+    pure $ fromCharArray [char]
+    
+-- Attempts the given parser, and returns whether it _would_ have suceeded.
+succeeds :: forall a. Parser a -> Parser Boolean
+succeeds prog = do
+  e <- Err.try do lookAhead prog
+  pure $ isRight e
 
 -- Identifier starts with a letter, then can be letters, numbers, or
 -- underscores
-ident' :: Parser Token
-ident' = forToken IDENT do
+ident :: Parser Token
+ident = forToken IDENT do
   first <- letter
   rest <- PC.many letterNumUnderscore
   let string = Str.joinWith "" $ [first] <> rest

@@ -13,7 +13,7 @@ import Data.String.CodeUnits (fromCharArray)
 import Data.Tuple.Nested ((/\))
 import Parsing (fail)
 import Parsing as P
-import Parsing.Combinators (try, option, optionMaybe, sepBy1)
+import Parsing.Combinators (option, optionMaybe, sepBy1, try)
 import Parsing.Combinators.Array as PC
 import Parsing.String as PS
 import Parsing.String.Basic as PB
@@ -51,9 +51,12 @@ data ValueExpr
 type Where = { join :: Join }
   
 data Join 
-  = Table { table :: Token, alias :: Token }
-  | Join { kind :: JoinType, table1 :: Join, table2 :: Join, on :: ValueExpr }
+  = Table TableData
+  | Tables (Array TableData)
+  | JoinOp { kind :: JoinType, table1 :: Join, table2 :: Join, on :: ValueExpr }
   | SubQuery Query
+  
+type TableData = { table :: Token, alias :: Maybe Token }
   
 data JoinType = InnerJoin | OuterJoin | LeftJoin | RightJoin
   
@@ -95,6 +98,29 @@ type GroupBy =
 type Limit = 
   { value :: IntegerLit
   }
+  
+join :: Parser Join
+join = try do
+  try joinOp <|> try tables <|> try table <|> try subquery
+  where
+  tableData = try do
+    t <- T.ident
+    alias <- optionMaybe T.ident
+    pure $ { table: t, alias }
+    
+  table = try do
+    td <- tableData
+    pure $ Table td
+    
+  tables = try do
+    ts <- sepBy1 tableData T.comma        
+    pure $ Tables (A.fromFoldable ts)
+    
+  joinOp = try do
+    fail "No join operation"
+    
+  subquery = try do
+    fail "No subquery implementation for 'join'"
   
 -- Attempt to parse a string. Fail if the string parse fails
 parseString :: forall a. String -> StringParser a -> Parser a
