@@ -36,9 +36,9 @@ type Query =
   { select :: Select
   , from :: From
   , where :: Where
-  , orderBy :: OrderBy
-  , groupBy :: GroupBy
-  , limit :: Limit
+  , orderBy :: Maybe OrderBy
+  , groupBy :: Maybe GroupBy
+  , limit :: Maybe Limit
   }
 
 type Select =
@@ -114,9 +114,10 @@ query = do
   select_ <- select
   from_ <- from
   where_ <- where'
-  groupBy_ <- groupBy
-  orderBy_ <- orderBy
-  limit_ <- limit
+  groupBy_ <- optionMaybe groupBy
+  orderBy_ <- optionMaybe orderBy
+  limit_ <- optionMaybe limit
+
   pure 
     { select: select_
     , from: from_
