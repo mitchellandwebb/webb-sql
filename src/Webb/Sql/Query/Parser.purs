@@ -13,7 +13,7 @@ import Data.String.CodeUnits (fromCharArray)
 import Data.Tuple.Nested ((/\))
 import Parsing (fail)
 import Parsing as P
-import Parsing.Combinators (option, optionMaybe, sepBy1, try)
+import Parsing.Combinators (option, optionMaybe, sepBy, sepBy1, try)
 import Parsing.Combinators.Array as PC
 import Parsing.String as PS
 import Parsing.String.Basic as PB
@@ -46,7 +46,7 @@ data ValueExpr
   = Field ColumnName
   | Call { name :: Token, args :: Array ValueExpr }
   | Prim Literal
-  | Wildcard { table :: Token }
+  | Wildcard { table :: Maybe Token }
   
 type Where = { join :: Join }
   
@@ -101,19 +101,38 @@ type Limit =
   
 valueExpr :: Parser ValueExpr
 valueExpr = try do
-  expr <- try field <|> try primitive <|> try wildcard <|> try call
-  fail "No value expression parser defined"
+  expr <- try field <|> try primitive <|> try wildcard <|> try (call unit)
+  pure expr
   
   where
-  field = fail "no field"
-  primitive = fail "no primitive"
-  wildcard = fail "no wildcard"
-  call = fail "no call"
+  field = Field <$> columnName
+
+  primitive = Prim <$> literal
+
+  wildcard = try bare <|> try withTable
+    where
+    bare :: Parser ValueExpr
+    bare = do 
+      _ <- T.star
+      pure $ Wildcard { table: Nothing }
+      
+    withTable :: Parser ValueExpr
+    withTable = do
+      table <- T.ident
+      _ <- T.dot
+      _ <- T.star
+      pure $ Wildcard { table: Just table }
+
+  call _ = do 
+    name <- T.ident
+    _ <- T.leftp
+    args <- A.fromFoldable <$> sepBy valueExpr T.comma
+    _ <- T.rightp
+    pure $ Call { name, args }
   
--- Joins. Note the dummy argument to enable recursion.
-join :: Unit -> Parser Join
-join _ = try do
-  try joinOp <|> try tables <|> try table <|> try subquery
+join :: Parser Join
+join = try do
+  try (joinOp unit) <|> try tables <|> try table <|> try subquery
   where
   tableData = try do
     t <- T.ident
@@ -128,10 +147,11 @@ join _ = try do
     ts <- sepBy1 tableData T.comma        
     pure $ Tables (A.fromFoldable ts)
     
-  joinOp = try do
-    t1 <- join unit
+  -- dummy argument to enable recursion.
+  joinOp _ = try do
+    t1 <- join 
     kind <- joinType
-    t2 <- join unit
+    t2 <- join 
     on <- onClause
     pure $ JoinOp { kind, table1: t1, table2: t2, on }
     
@@ -169,6 +189,17 @@ parseString s prog = try do
   case e of
     Left (P.ParseError msg _) -> do fail msg
     Right res -> pure res
+    
+literal :: Parser Literal
+literal = do
+  try int<|> try bool <|> try string <|> try number
+  
+  where
+  int = Integer <$> integerLit
+  bool = Bool <$> booleanLit
+  string = Text <$> stringLit
+  number = Real <$> numberLit
+  
 
 -- Parse the token into an in-memory boolean value.
 booleanLit :: Parser BooleanLit
