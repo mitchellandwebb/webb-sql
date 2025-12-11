@@ -32,13 +32,20 @@ import Webb.Sql.Query.Token (Token, TokenType(..))
 type Parser a = T.Parser a
 type StringParser a = P.Parser String a
 
-data Query
+type Query = 
+  { select :: Select
+  , from :: From
+  , where :: Where
+  , orderBy :: OrderBy
+  , groupBy :: GroupBy
+  , limit :: Limit
+  }
 
 type Select =
   { columns :: Array Column
   }
 
-type Column = { expr :: ValueExpr, alias :: Maybe String }
+type Column = { expr :: ValueExpr, alias :: Maybe Token }
 
 type ColumnName = { table :: Maybe Token, field :: Token }
 
@@ -48,17 +55,20 @@ data ValueExpr
   | Prim Literal
   | Wildcard { table :: Maybe Token }
   
-type Where = { join :: Join }
+data From = Tables (Array TableData) | Joins Join
   
 data Join 
   = Table TableData
-  | Tables (Array TableData)
   | JoinOp { kind :: JoinType, table1 :: Join, table2 :: Join, on :: ValueExpr }
   | SubQuery Query
   
 type TableData = { table :: Token, alias :: Maybe Token }
   
 data JoinType = InnerJoin | OuterJoin | LeftJoin | RightJoin
+
+type Where = 
+  { expr :: ValueExpr
+  }
   
 type IntegerLit = 
   { token :: Token
@@ -99,6 +109,35 @@ type Limit =
   { value :: IntegerLit
   }
   
+query :: Parser Query
+query = do
+  select_ <- select
+  from_ <- from
+  where_ <- where'
+  groupBy_ <- groupBy
+  orderBy_ <- orderBy
+  limit_ <- limit
+  pure 
+    { select: select_
+    , from: from_
+    , where: where_
+    , groupBy: groupBy_
+    , orderBy: orderBy_
+    , limit: limit_
+    }
+  
+select :: Parser Select
+select = do 
+  columns <- PC.many column
+  pure $ { columns }
+  
+  where
+  column :: Parser Column
+  column = do 
+    expr <- valueExpr
+    alias <- optionMaybe T.ident
+    pure $ { expr, alias }
+  
 valueExpr :: Parser ValueExpr
 valueExpr = try do
   expr <- try field <|> try primitive <|> try wildcard <|> try (call unit)
@@ -129,23 +168,33 @@ valueExpr = try do
     args <- A.fromFoldable <$> sepBy valueExpr T.comma
     _ <- T.rightp
     pure $ Call { name, args }
+    
+from :: Parser From
+from = do
+  try tables <|> try (joins unit)
+  where
+  tables :: Parser From
+  tables = try do
+    ts <- sepBy1 tableData T.comma        
+    pure $ Tables $ A.fromFoldable ts
+    
+  joins :: Unit -> Parser From
+  joins _ = try do Joins <$> join
+
+tableData :: Parser TableData
+tableData = try do
+  t <- T.ident
+  alias <- optionMaybe T.ident
+  pure $ { table: t, alias }
   
 join :: Parser Join
 join = try do
-  try (joinOp unit) <|> try tables <|> try table <|> try subquery
+  try (joinOp unit) <|> try table <|> try (subquery unit)
   where
-  tableData = try do
-    t <- T.ident
-    alias <- optionMaybe T.ident
-    pure $ { table: t, alias }
     
   table = try do
     td <- tableData
     pure $ Table td
-    
-  tables = try do
-    ts <- sepBy1 tableData T.comma        
-    pure $ Tables (A.fromFoldable ts)
     
   -- dummy argument to enable recursion.
   joinOp _ = try do
@@ -179,8 +228,13 @@ join = try do
     void $ T.on
     valueExpr  
     
-  subquery = try do
-    fail "No subquery implementation for 'join'"
+  -- Recursion dummy argument.
+  subquery _ = try do SubQuery <$> query
+    
+where' :: Parser Where
+where' = do 
+  expr <- valueExpr
+  pure $ { expr }
   
 -- Attempt to parse a string. Fail if the string parse fails
 parseString :: forall a. String -> StringParser a -> Parser a
