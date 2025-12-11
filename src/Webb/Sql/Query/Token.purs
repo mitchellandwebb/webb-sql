@@ -142,9 +142,10 @@ token = try do
     equal <|>
     notEqual <|>
     on <|>
-    ident <|>
     asc <|>
-    desc
+    desc <|>
+
+    ident -- ALWAYS last, to prevent conflict with all keywords
     
 -- Parse the string, but try _all_ the possible case variations.
 anyCase :: String -> Parser String

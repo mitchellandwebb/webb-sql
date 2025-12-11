@@ -99,8 +99,13 @@ type Limit =
   { value :: IntegerLit
   }
   
-join :: Parser Join
-join = try do
+valueExpr :: Parser ValueExpr
+valueExpr = do
+  fail "No value expression parser defined"
+  
+-- Joins. Note the dummy argument to enable recursion.
+join :: Unit -> Parser Join
+join _ = try do
   try joinOp <|> try tables <|> try table <|> try subquery
   where
   tableData = try do
@@ -117,7 +122,35 @@ join = try do
     pure $ Tables (A.fromFoldable ts)
     
   joinOp = try do
-    fail "No join operation"
+    t1 <- join unit
+    kind <- joinType
+    t2 <- join unit
+    on <- onClause
+    pure $ JoinOp { kind, table1: t1, table2: t2, on }
+    
+  joinType = try do
+    innerJoin <|> leftJoin <|> rightJoin <|> outerJoin
+    
+    where
+    innerJoin = try do 
+      void $ (T.inner *> T.join) <|> try (T.join)
+      pure InnerJoin
+
+    leftJoin = try do 
+      void $ (T.left *> T.join )
+      pure LeftJoin
+
+    rightJoin = try do
+      void (T.right *> T.join )
+      pure RightJoin
+
+    outerJoin = try do 
+      void (T.outer *> T.join )
+      pure OuterJoin
+      
+  onClause = try do
+    void $ T.on
+    valueExpr  
     
   subquery = try do
     fail "No subquery implementation for 'join'"
