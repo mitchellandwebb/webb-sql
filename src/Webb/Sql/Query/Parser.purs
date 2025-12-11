@@ -46,7 +46,7 @@ data ValueExpr
   = Field ColumnName
   | Call { name :: Token, args :: Array ValueExpr }
   | Prim Literal
-  | Wildcard
+  | Wildcard { table :: Token }
   
 type Where = { join :: Join }
   
@@ -100,8 +100,15 @@ type Limit =
   }
   
 valueExpr :: Parser ValueExpr
-valueExpr = do
+valueExpr = try do
+  expr <- try field <|> try primitive <|> try wildcard <|> try call
   fail "No value expression parser defined"
+  
+  where
+  field = fail "no field"
+  primitive = fail "no primitive"
+  wildcard = fail "no wildcard"
+  call = fail "no call"
   
 -- Joins. Note the dummy argument to enable recursion.
 join :: Unit -> Parser Join
