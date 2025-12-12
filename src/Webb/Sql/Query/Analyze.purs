@@ -11,7 +11,8 @@ import Data.Tuple.Nested ((/\), type (/\))
 import Effect.Class (class MonadEffect)
 import Webb.Sql.Query.Parser (From(..), TableData)
 import Webb.Sql.Query.Parser as P
-import Webb.State.Prelude (aread)
+import Webb.Sql.Query.Token (Token)
+import Webb.State.Prelude (aread, awrite)
 import Webb.Stateful.MapColl (MapColl, newMap)
 import Webb.Stateful.MapColl as M
 import Webb.Validate.Validate (Validate, assert, runValidate_)
@@ -118,8 +119,54 @@ buildTableLookup ex tree = do
 buildLocalTables :: forall m. MonadEffect m =>
   External_ -> TableLookup -> SelectTree -> m (Maybe (TableLookup /\ LocalTables))
 buildLocalTables ex tables tree = do
-  pure Nothing
+  case tree.from of
+    P.Tables _ -> do
+      pure $ Just $ tables /\ Map.empty
+    P.Joins join -> do 
+      lookups <- newMap
+      awrite tables lookups
+      locals <- newMap
+      validate ex do 
+        buildJoin join lookups locals
 
+      ifM (hasErrors ex) (do
+        pure Nothing 
+      ) (do 
+        lookups' <- aread lookups
+        locals' <- aread locals
+        pure $ Just $ lookups' /\ locals'
+      )
+  where
+  buildJoin :: 
+    P.Join -> MapColl String String -> MapColl String TableDef -> Validate m Unit
+  buildJoin join lookups locals = do
+    case join of
+      P.Table _ -> do 
+        pure unit
+      P.JoinOp { table1, table2 } -> do
+        buildJoin table1 lookups locals
+        buildJoin table2 lookups locals
+      P.SubQuery { query, alias } -> do
+        buildSubquery query alias lookups locals
+    
+  buildSubquery :: 
+    P.Query -> Maybe Token -> 
+    MapColl String String -> MapColl String TableDef -> 
+    Validate m Unit
+  buildSubquery query malias lookups locals = do
+    case malias of 
+      Nothing -> do 
+        -- TODO -- for parsing warnings, errors typically will also 
+        -- go with the Start/End token that is responsible for the
+        -- error. In this case, we'd like to publish that the entire subquery
+        -- itself causes the error -- but if not that, perhaps each
+        -- element of the tree needs to be annotated with the start/end position
+        -- for the element? That allows it to be independent of the structure
+        -- itself. In other words, we need a tree of Nodes for this to work,
+        -- which is annoying (of course)
+        assert false "A subquery must be aliased in a join"
+      Just alias -> do
+        assert false "How to build a subquery definition is not yet defined"
 
 validate :: forall m. MonadEffect m => External_ -> Validate m Unit -> m Unit
 validate ex prog = do runValidate_ (warn ex) prog

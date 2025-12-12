@@ -61,7 +61,7 @@ data From = Tables (Array TableData) | Joins Join
 data Join 
   = Table TableData
   | JoinOp { kind :: JoinType, table1 :: Join, table2 :: Join, on :: ValueExpr }
-  | SubQuery Query
+  | SubQuery { query :: Query, alias :: Maybe Token }
   
 type TableData = { table :: Token, alias :: Maybe Token }
   
@@ -241,7 +241,10 @@ join = try do
     valueExpr  
     
   -- Recursion dummy argument.
-  subquery _ = try do SubQuery <$> query
+  subquery _ = try do 
+    query' <- query
+    alias <- optionMaybe $ T.ident
+    pure $ SubQuery { query: query', alias }
     
 where' :: Parser Where
 where' = do 
