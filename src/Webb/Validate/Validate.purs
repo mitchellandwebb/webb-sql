@@ -16,7 +16,7 @@ import Webb.Stateful.SetColl as S
 
 
 
-type Validate m a = StateT (String -> Effect Unit) m a
+type Validate = StateT (String -> Effect Unit)
 
 runValidate_ :: forall m. Monad m => 
   (String -> Effect Unit) -> Validate m Unit -> m Unit

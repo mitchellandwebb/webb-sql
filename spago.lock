@@ -735,7 +735,7 @@
       "spec-discovery": "8.2.0",
       "webb-monad": "0.0.2",
       "webb-refer": "0.0.2",
-      "webb-stateful": "0.0.1",
+      "webb-stateful": "0.0.2",
       "webb-test": "0.0.1",
       "webb-writer": "0.0.1"
     }
@@ -1884,8 +1884,8 @@
     },
     "webb-stateful": {
       "type": "registry",
-      "version": "0.0.1",
-      "integrity": "sha256-0R+cYjNBsnzCKpd4ZdUsbYXDWVyr/Wkdj2Hzy3+xv1Q=",
+      "version": "0.0.2",
+      "integrity": "sha256-ToT98nCMrrs/CB2QUn945UTw5xly6ladqi5ObYN9he0=",
       "dependencies": [
         "arrays",
         "effect",

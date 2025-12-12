@@ -38,4 +38,4 @@ workspace:
     webb-refer: 0.0.2
     webb-monad: 0.0.2
     webb-writer: 0.0.1
-    webb-stateful: 0.0.1
+    webb-stateful: 0.0.2

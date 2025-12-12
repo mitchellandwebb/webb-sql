@@ -2,21 +2,37 @@ module Webb.Sql.Query.Analyze where
 
 import Prelude
 
+import Control.Alt ((<|>))
 import Data.Foldable (for_)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.String as Str
+import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\), type (/\))
 import Effect.Class (class MonadEffect)
+import Webb.Monad.Prelude (forceMaybe', notM)
 import Webb.Sql.Query.Parser (From(..), TableData)
 import Webb.Sql.Query.Parser as P
 import Webb.Sql.Query.Token (Token)
 import Webb.State.Prelude (aread, awrite)
+import Webb.Stateful (localEffect)
 import Webb.Stateful.MapColl (MapColl, newMap)
 import Webb.Stateful.MapColl as M
 import Webb.Validate.Validate (Validate, assert, runValidate_)
 
+
+{- Analyze the query tree.
+
+1. Build symbol lookups for global tables (if any) and local subqueries that
+  function as tables.
+
+2. Import table definitions for all tables that are used in this query. Go through
+  all clauses and validate that each declared field usage refers to a real field. If
+  not, we can end the analysis.
+  
+3. 
+-}
 
 type SelectTree = P.Query
 
@@ -52,6 +68,28 @@ type ForeignKey =
   { fields :: Array String
   , ref :: { table :: String, fields :: Array String}
   }
+
+type TableDefLookup = 
+  { ex :: External_
+  , locals :: LocalTables
+  , aliases :: TableLookup
+  }
+  
+aliasExists :: String -> TableDefLookup -> Boolean
+aliasExists alias s = Map.member alias s.aliases
+  
+lookupTable :: String -> TableDefLookup -> TableDef
+lookupTable alias s = localEffect do
+  let mdef = (do 
+        table :: String <- Map.lookup alias s.aliases 
+        tableDef s.ex table <|> Map.lookup table s.locals
+        ) :: Maybe TableDef
+  forceMaybe' ("Table for alias '" <> alias <> "' was not found") mdef
+
+lookupField :: String -> String -> TableDefLookup -> Maybe FieldDef
+lookupField table field s = let
+  tableDef = lookupTable table s
+  in Map.lookup field tableDef.fields
 
 -- Build symbol lookups for known tables in the FROM 
 buildTableLookup :: forall m. MonadEffect m => 
@@ -95,7 +133,7 @@ buildTableLookup ex tree = do
     let table = td.table.string
         malias = _.string <$> td.alias
         name = Str.toLower $ fromMaybe table malias
-    ifM (isJust <$> M.lookup coll name) (do 
+    ifM (M.member coll name) (do 
       assert false $ "Table alias is already used: " <> name
     ) (do 
       M.insert coll name table
@@ -152,12 +190,65 @@ buildLocalTables ex tables tree = do
         -- which is annoying (of course)
         assert false "A subquery must be aliased in a join"
       Just alias -> do
+        -- TODO -- add query to local table AND to alias
         assert false "How to build a subquery definition is not yet defined"
+
+-- Build a unified API for looking up the tables. Verifies that all tables
+-- are already defined externally or locally, and if they are, returns a 
+-- way to lookup tables definitions.
+buildTableDefLookup :: forall m. MonadEffect m =>
+  External_ -> TableLookup -> LocalTables -> m (Maybe (TableDefLookup))
+buildTableDefLookup ex lookups locals = do
+  validate ex do
+    for_ tableSymbols \(alias /\ name) -> do
+      assert (hasTableDef name) $ noTableMsg alias name
+      
+  ifM (hasErrors ex) (do
+    pure Nothing
+  ) (do 
+    -- If we obtained no errors, then we are free to assume that all the table
+    -- definitions exist, and will always exist.
+    pure $ Just { ex, locals, aliases: lookups }
+  )
+  
+  where
+  tableSymbols = Map.toUnfoldable lookups :: Array _
+
+  hasTableDef name = tableExists ex name || Map.member name locals 
+
+  noTableMsg alias name = 
+    "Alias '" <> alias <> "' for table '" <> name <> "' does not have a "
+      <> "matching global table, " <> "or local subquery"
+
+-- Verify that all uses of tables and fields, in all clauses, are valid.
+checkTablesAndFields :: forall m. MonadEffect m => 
+  External_ -> TableDefLookup -> SelectTree -> m Boolean
+checkTablesAndFields ex defs tree = do
+  validate ex do
+    checkSelect
+    checkFrom
+    checkWhere
+    checkGroupBy
+    checkOrderBy
+    checkLimit
+  notM (hasErrors ex)
+  
+  where 
+  todo = assert false "TODO"
+
+  checkSelect = todo
+  checkFrom = todo
+  checkWhere = todo
+  checkGroupBy = todo
+  checkOrderBy = todo
+  checkLimit = todo
 
 validate :: forall m. MonadEffect m => External_ -> Validate m Unit -> m Unit
 validate ex prog = do runValidate_ (warn ex) prog
 
 class External a where
+  tableDef :: a -> String -> Maybe TableDef
+  tableExists :: a -> String -> Boolean
   warn :: forall m. MonadEffect m => a -> String -> m Unit
   hasErrors :: forall m. MonadEffect m => a -> m Boolean
 
@@ -167,5 +258,7 @@ wrap :: forall z. External z => z -> External_
 wrap z = External__ (_ $ z)
 
 instance External (External_) where 
+  tableDef (External__ run) = run tableDef
+  tableExists (External__ run) = run tableExists
   warn (External__ run) = run warn
   hasErrors (External__ run) = run hasErrors
