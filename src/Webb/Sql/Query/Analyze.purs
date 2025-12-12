@@ -5,8 +5,9 @@ import Prelude
 import Data.Foldable (for_)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.String as Str
+import Data.Tuple.Nested ((/\), type (/\))
 import Effect.Class (class MonadEffect)
 import Webb.Sql.Query.Parser (From(..), TableData)
 import Webb.Sql.Query.Parser as P
@@ -42,8 +43,29 @@ data ValueType
   
 type RecordType = Map String ValueType
 
--- Look up tables according to their assigned aliases.
+-- Look up tables according to their assigned aliases. 
 type TableLookup = Map String String
+
+-- The names of local tables, mapped to their defined fields and field types.
+type LocalTables = Map String TableDef
+
+type TableDef = 
+  { name :: String
+  , fields :: Map String FieldDef
+  , primaryKey :: Array String
+  , foreignKeys :: Array ForeignKey
+  }
+  
+type FieldDef = 
+  { name :: String
+  , kind :: ValueType
+  , nil :: Boolean
+  }
+
+type ForeignKey = 
+  { fields :: Array String
+  , ref :: { table :: String, fields :: Array String}
+  }
 
 buildTableLookup :: forall m. MonadEffect m => 
   External_ -> SelectTree -> m (Maybe (TableLookup))
@@ -86,11 +108,18 @@ buildTableLookup ex tree = do
     let table = td.table.string
         malias = _.string <$> td.alias
         name = Str.toLower $ fromMaybe table malias
-    ifM (M.member coll name) (do 
+    ifM (isJust <$> M.lookup coll name) (do 
       assert false $ "Table alias is already used: " <> name
     ) (do 
       M.insert coll name table
     )
+
+-- Build local tables from subqueries declared in the FROM clause.
+buildLocalTables :: forall m. MonadEffect m =>
+  External_ -> TableLookup -> SelectTree -> m (Maybe (TableLookup /\ LocalTables))
+buildLocalTables ex tables tree = do
+  pure Nothing
+
 
 validate :: forall m. MonadEffect m => External_ -> Validate m Unit -> m Unit
 validate ex prog = do runValidate_ (warn ex) prog
