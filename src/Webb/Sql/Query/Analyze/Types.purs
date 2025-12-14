@@ -2,8 +2,10 @@ module Webb.Sql.Query.Analyze.Types where
 
 import Prelude
 
+import Data.Generic.Rep (class Generic)
 import Data.Map (Map)
 import Data.Maybe (Maybe)
+import Data.Show.Generic (genericShow)
 import Webb.Sql.Query.Parser as P
 
 {- Define the base monad for use during analysis, and common effects shared 
@@ -23,6 +25,16 @@ data ValueType
   | Product ValueType ValueType
   | Never
   | Any
+  
+-- Is the given type 'b' capable of being used in place of type 'a'?
+aIncludesB :: ValueType -> ValueType -> Boolean
+aIncludesB a b = true
+
+derive instance Generic ValueType _
+instance Show ValueType where
+  show (Union a b) = "Union (" <> show a <> ") (" <> show b <> ")"
+  show (Product a b) = "Product (" <> show a <> ") (" <> show b <> ")"
+  show a = genericShow a
   
 type RecordType = Map String ValueType
 
