@@ -18,6 +18,7 @@ package:
     - webb-monad
     - webb-writer
     - webb-stateful
+    - webb-random
     - profunctor-lenses
     - parsing
 
@@ -31,7 +32,7 @@ package:
 
 workspace:
   packageSet:
-    registry: 63.9.0
+    registry: 68.8.1
   extraPackages:
     spec-discovery: 8.2.0
     webb-test: 0.0.1
@@ -39,3 +40,5 @@ workspace:
     webb-monad: 0.0.2
     webb-writer: 0.0.1
     webb-stateful: 0.0.2
+    webb-random:
+      path: '../webb-random'

@@ -1,4 +1,4 @@
-module Webb.Sql.Analyze.Query where
+module Webb.Sql.Analyze.BuildTables where
 
 import Prelude
 import Webb.Sql.Analyze.AnalyzeM
@@ -9,6 +9,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String as Str
 import Effect.Class (class MonadEffect)
 import Webb.Monad.Prelude (notM)
+import Webb.Random (randomId)
 import Webb.Sql.Query.Parser (TableData)
 import Webb.Sql.Query.Parser as P
 import Webb.Sql.Query.Token (Token)
@@ -47,7 +48,8 @@ buildAliases = do
         addJoin table1
         addJoin table2
 
-  -- Add a single table's data to the table lookups.
+  -- Add a single table's data to the table lookups. If no alias, use
+  -- the table's name directly.
   addTableData :: TableData -> AnalyzeM m Unit 
   addTableData td = do 
     this <- mread
@@ -91,16 +93,17 @@ buildLocalTables = do
     
   buildSubquery :: 
     P.Query -> Maybe Token -> AnalyzeM m Unit
-  buildSubquery query malias = do
+  buildSubquery query mtoken = do
     this <- mread
-    case malias of 
+    case mtoken of 
       Nothing -> do 
         -- TODO -- should have lines/columns for ENTIRE query that causes this.
         warn "A subquery must be aliased in a join"
-      Just alias -> do
+      Just token -> do
+        let alias = token.string
         confirmAlias alias
         tableId <- randomId
         M.insert this.aliases alias tableId
 
         let tableDef = analyzeQuery this.ex query
-        M.insert this.lookups tableId tableDef
+        M.insert this.locals tableId tableDef
