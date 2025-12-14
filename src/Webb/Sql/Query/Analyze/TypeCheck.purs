@@ -59,19 +59,17 @@ checkQuery = do
     let where' = this.tree.where
     checkExpr where'.expr
   
-  -- Technically, we need not group by fields, but can group by ANY arbitrary
-  -- value expression. However, for our purposes, we only allow grouping by one or more 
-  -- fields. SQL also doesn't allow aliases of a field here -- understandable, but
-  -- annoying. Since we only allow fields, no types need to be checked.
   checkGroupBy = do
-    pure unit
+    this <- mread
+    let mgroupBy = this.tree.groupBy
+    for_ mgroupBy \groupBy -> do
+      for_ groupBy.fields checkExpr
   
-  -- There's also nothing to do here, either. We SHOULD be grouping by any arbitrary
-  -- expression that is calculated by row, but we only allow fields at the moment.
-  -- That ... probably needs to change.
   checkOrderBy = do 
-    pure unit
-
+    this <- mread
+    let morderBy = this.tree.orderBy
+    for_ morderBy \orderBy -> do
+      for_ orderBy.fields checkExpr
 
 -- Perform checks on everything within the expression. Errors are published
 -- to the Analyze monad.

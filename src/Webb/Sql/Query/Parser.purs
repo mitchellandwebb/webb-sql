@@ -98,12 +98,12 @@ data Literal
   | Bool BooleanLit
   
 type OrderBy = 
-  { fields :: Array ColumnName
+  { fields :: Array ValueExpr
   , asc :: Boolean
   }
 
 type GroupBy = 
-  { fields :: Array ColumnName
+  { fields :: Array ValueExpr
   }
 
 type Limit = 
@@ -139,6 +139,11 @@ select = do
     expr <- valueExpr
     alias <- optionMaybe T.ident
     pure $ { expr, alias }
+
+valueExprs :: Parser (Array ValueExpr)
+valueExprs = try do
+  list <- sepBy1 valueExpr T.comma
+  pure $ A.fromFoldable list
   
 valueExpr :: Parser ValueExpr
 valueExpr = try do
@@ -346,16 +351,16 @@ groupBy :: Parser GroupBy
 groupBy = try do
   _ <- T.group
   _ <- T.by
-  names <- columnNames
-  pure $ { fields: names }
+  exprs <- valueExprs
+  pure $ { fields: exprs }
       
 orderBy :: Parser OrderBy  
 orderBy = try do
   _ <- T.order
   _ <- T.by
-  names <- columnNames
+  exprs <- valueExprs
   asc <- option true ascending
-  pure $ { fields: names, asc }
+  pure $ { fields: exprs, asc }
   
   where 
   ascending = do
@@ -384,5 +389,7 @@ columnNames :: Parser (Array ColumnName)
 columnNames = try do 
   list <- sepBy1 columnName T.comma
   pure $ A.fromFoldable list
+  
+
 
   

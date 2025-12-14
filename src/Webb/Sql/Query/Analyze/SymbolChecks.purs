@@ -5,8 +5,8 @@ import Webb.Sql.Query.Analyze.AnalyzeM
 import Webb.Sql.Query.Analyze.Types
 
 import Control.Alt ((<|>))
-import Data.Array as Arr  
-import Data.Foldable (for_) 
+import Data.Array as Arr
+import Data.Foldable (for_)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Effect.Class (class MonadEffect, liftEffect)
@@ -40,6 +40,9 @@ confirmSelect = do
   where
   confirmColumn col = do confirmExpr col.expr
   
+confirmExprs :: forall m. MonadEffect m => Array P.ValueExpr -> AnalyzeM m Unit
+confirmExprs exprs = for_ exprs confirmExpr
+
 confirmExpr :: forall m. MonadEffect m => P.ValueExpr -> AnalyzeM m Unit
 confirmExpr expr = case expr of
   P.Field name -> do 
@@ -96,13 +99,13 @@ confirmGroupBy :: forall m. MonadEffect m => AnalyzeM m Unit
 confirmGroupBy = do 
   this <- mread
   for_ this.tree.groupBy \{ fields } -> do
-    confirmColumnNames fields
+    confirmExprs fields
   
 confirmOrderBy :: forall m. MonadEffect m => AnalyzeM m Unit
 confirmOrderBy = do
   this <- mread
   for_ this.tree.orderBy \{ fields } -> do
-    confirmColumnNames fields
+    confirmExprs fields
     
 confirmColumnNames :: forall m. MonadEffect m => 
   Array P.ColumnName -> AnalyzeM m Unit
@@ -119,7 +122,7 @@ confirmColumnName column = do
       confirmSoloField field
     Just table -> do
       confirmField table field
-  
+      
 confirmFn :: forall m. MonadEffect m =>
   String -> AnalyzeM m Unit
 confirmFn name = do
