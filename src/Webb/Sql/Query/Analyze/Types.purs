@@ -20,7 +20,6 @@ data ValueType
   | Text
   | Bool
   | Nil
-  | Field
   | Union ValueType ValueType
   | Product ValueType ValueType
   | Never
@@ -28,7 +27,34 @@ data ValueType
   
 -- Is the given type 'b' capable of being used in place of type 'a'?
 aIncludesB :: ValueType -> ValueType -> Boolean
-aIncludesB a b = true
+aIncludesB a b = case a of
+  Integer -> case b of
+    Integer -> true
+    _ -> false
+  Real -> case b of
+    Integer -> true
+    Real -> true
+    _ -> false
+  Text -> case b of 
+    Text -> true
+    _ -> false
+  Bool -> case b of
+    Bool -> true
+    _ -> false
+  Nil -> case b of
+    Nil -> true
+    _ -> false
+  Never -> case b of
+    Never -> true
+    _ -> false
+  Union x y -> x <=: b || y <=: b
+  Product x y -> x <=: b && y <=: b
+  Any -> true
+  
+infix 10 aIncludesB as <=:
+  
+instance Eq ValueType where
+  eq a b = a <=: b && b <=: a
 
 derive instance Generic ValueType _
 instance Show ValueType where

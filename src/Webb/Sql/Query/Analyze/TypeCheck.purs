@@ -9,17 +9,13 @@ import Data.Array as Arr
 import Data.Foldable (for_)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
-import Data.Set (Set)
 import Data.Tuple (uncurry)
-import Data.Tuple.Nested (uncurry1, uncurry2)
-import Effect.Class (class MonadEffect, liftEffect)
-import Webb.Monad.Prelude (forceMaybe')
+import Effect.Class (class MonadEffect)
+import Webb.Monad.Prelude (notM)
 import Webb.Sql.Query.Parser (ValueExpr)
 import Webb.Sql.Query.Parser as P
 import Webb.State.Prelude (mread)
 import Webb.Stateful.MapColl as M
-
-
 
 {- Validate the type usage in each clause of the SQL query. Publish a 
   warning when invalid types are used in particular contexts.
@@ -33,7 +29,52 @@ import Webb.Stateful.MapColl as M
 -}
 
 
+checkQuery :: forall m. MonadEffect m => AnalyzeM m Boolean
+checkQuery = do
+  checkSelect
+  checkFrom
+  checkWhere
+  checkGroupBy
+  checkOrderBy
+  
+  notM hasErrors
+  
+  where
+  checkSelect = do 
+    this <- mread
+    let columns = this.tree.select.columns
+    for_ columns \c -> do checkExpr c.expr
+  
+  checkFrom = do 
+    this <- mread 
+    case this.tree.from of
+      P.Tables _ -> pure unit
+      P.Joins join -> case join of
+        P.Table _ -> pure unit
+        P.SubQuery _ -> pure unit
+        P.JoinOp { on } -> do checkExpr on
+  
+  checkWhere = do
+    this <- mread
+    let where' = this.tree.where
+    checkExpr where'.expr
+  
+  -- Technically, we need not group by fields, but can group by ANY arbitrary
+  -- value expression. However, for our purposes, we only allow grouping by one or more 
+  -- fields. SQL also doesn't allow aliases of a field here -- understandable, but
+  -- annoying. Since we only allow fields, no types need to be checked.
+  checkGroupBy = do
+    pure unit
+  
+  -- There's also nothing to do here, either. We SHOULD be grouping by any arbitrary
+  -- expression that is calculated by row, but we only allow fields at the moment.
+  -- That ... probably needs to change.
+  checkOrderBy = do 
+    pure unit
 
+
+-- Perform checks on everything within the expression. Errors are published
+-- to the Analyze monad.
 checkExpr :: forall m. MonadEffect m => ValueExpr -> AnalyzeM m Unit
 checkExpr expr = void $ checkExpr' expr
 
@@ -49,7 +90,8 @@ checkExpr' expr = case expr of
     typeofLiteral lit
     
   P.Wildcard _ -> do
-    -- A wildcard should NEVER be used ... except in certain cases.
+    -- A wildcard should NEVER be used ... except in certain cases that are
+    -- baked into SQL, like COUNT(*) or (COUNT a.*)
     pure Never
     
   P.Call s -> do 
@@ -60,9 +102,8 @@ checkExpr' expr = case expr of
     verifyArgs def s.args
     pure def.return
     
-  -- For initial type-checking, an argument off 'this' can have any type.
-  -- If everything else type-checks, we'll do inference for the 'this' type
-  -- in a separate phase -- if any property has multiple types, we will err.
+  -- "This" arguments can match anything. We will verify that match only _one_
+  -- thing later.
   P.This _ -> do
     pure Any
     
