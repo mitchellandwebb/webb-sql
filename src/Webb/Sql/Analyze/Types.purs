@@ -48,6 +48,7 @@ type ForeignKey =
 class External a where
   tableDef :: a -> String -> Maybe TableDef
   tableExists :: a -> String -> Boolean
+  fnExists :: a -> String -> Boolean
   analyzeQuery :: a -> SelectTree -> TableDef
 
 newtype External_ = External__ (forall r. (forall z. External z => z -> r) -> r)
@@ -58,4 +59,5 @@ wrap z = External__ (_ $ z)
 instance External (External_) where 
   tableDef (External__ run) = run tableDef
   tableExists (External__ run) = run tableExists
+  fnExists (External__ run) = run fnExists
   analyzeQuery (External__ run) = run analyzeQuery
