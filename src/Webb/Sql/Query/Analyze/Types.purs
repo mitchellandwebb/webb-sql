@@ -1,4 +1,4 @@
-module Webb.Sql.Analyze.Types where
+module Webb.Sql.Query.Analyze.Types where
 
 import Prelude
 
@@ -17,7 +17,12 @@ data ValueType
   | Real
   | Text
   | Bool
+  | Nil
   | Field
+  | Union ValueType ValueType
+  | Product ValueType ValueType
+  | Never
+  | Any
   
 type RecordType = Map String ValueType
 
@@ -44,10 +49,17 @@ type ForeignKey =
   { fields :: Array String
   , ref :: { table :: String, fields :: Array String}
   }
+  
+type FnDef = 
+  { name :: String
+  , args :: Array ValueType
+  , return :: ValueType
+  }
 
 class External a where
   tableDef :: a -> String -> Maybe TableDef
   tableExists :: a -> String -> Boolean
+  fnDef :: a -> String -> Maybe FnDef
   fnExists :: a -> String -> Boolean
   analyzeQuery :: a -> SelectTree -> TableDef
 
@@ -59,5 +71,6 @@ wrap z = External__ (_ $ z)
 instance External (External_) where 
   tableDef (External__ run) = run tableDef
   tableExists (External__ run) = run tableExists
+  fnDef (External__ run) = run fnDef
   fnExists (External__ run) = run fnExists
   analyzeQuery (External__ run) = run analyzeQuery

@@ -1,12 +1,12 @@
-module Webb.Sql.Analyze.SymbolChecks where
+module Webb.Sql.Query.Analyze.SymbolChecks where
 
 import Prelude
-import Webb.Sql.Analyze.AnalyzeM
-import Webb.Sql.Analyze.Types
+import Webb.Sql.Query.Analyze.AnalyzeM
+import Webb.Sql.Query.Analyze.Types
 
 import Control.Alt ((<|>))
-import Data.Array as Arr
-import Data.Foldable (for_)
+import Data.Array as Arr  
+import Data.Foldable (for_) 
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Effect.Class (class MonadEffect, liftEffect)

@@ -1,10 +1,12 @@
-module Webb.Sql.Analyze.AnalyzeM where
+module Webb.Sql.Query.Analyze.AnalyzeM where
 
 import Prelude
-import Webb.Sql.Analyze.Types
+import Webb.Sql.Query.Analyze.Types
 
 import Control.Monad.State (StateT)
-import Effect.Class (class MonadEffect)
+import Data.Maybe (Maybe)
+import Effect.Class (class MonadEffect, liftEffect)
+import Webb.Monad.Prelude (forceMaybe')
 import Webb.State.Prelude (mread)
 import Webb.Stateful.ArrayColl (ArrayColl)
 import Webb.Stateful.ArrayColl as A
@@ -14,6 +16,7 @@ import Webb.Stateful.MapColl (MapColl)
 {- Define the common monad for analysis, and common functions during it. -}
 
 type AnalyzeM = StateT AnalyzeState
+type Analyze = AnalyzeM
 
 type AnalyzeState = 
   { ex :: External_
@@ -40,4 +43,5 @@ assert bool msg = unless bool do warn msg
 assertM :: forall m. MonadEffect m => AnalyzeM m Boolean -> String -> AnalyzeM m Unit
 assertM prog msg = unlessM prog do warn msg
 
-  
+force :: forall m a. MonadEffect m => String -> Maybe a -> AnalyzeM m a
+force str maybe = liftEffect do forceMaybe' str maybe

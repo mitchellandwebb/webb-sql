@@ -1,8 +1,8 @@
-module Webb.Sql.Analyze.BuildTables where
+module Webb.Sql.Query.Analyze.BuildTables where
 
 import Prelude
-import Webb.Sql.Analyze.AnalyzeM
-import Webb.Sql.Analyze.Types
+import Webb.Sql.Query.Analyze.AnalyzeM
+import Webb.Sql.Query.Analyze.Types
 
 import Data.Foldable (for_)
 import Data.Maybe (Maybe(..), fromMaybe)
