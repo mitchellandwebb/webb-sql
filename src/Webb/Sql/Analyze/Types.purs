@@ -4,8 +4,11 @@ import Prelude
 
 import Data.Map (Map)
 import Data.Maybe (Maybe)
-import Effect.Class (class MonadEffect)
 import Webb.Sql.Query.Parser as P
+
+{- Define the base monad for use during analysis, and common effects shared 
+  across all modules.
+-}
 
 type SelectTree = P.Query
 
@@ -42,17 +45,10 @@ type ForeignKey =
   , ref :: { table :: String, fields :: Array String}
   }
 
-type TableDefLookup = 
-  { ex :: External_
-  , locals :: LocalTables
-  , aliases :: AliasLookup
-  }
-  
 class External a where
   tableDef :: a -> String -> Maybe TableDef
   tableExists :: a -> String -> Boolean
-  warn :: forall m. MonadEffect m => a -> String -> m Unit
-  hasErrors :: forall m. MonadEffect m => a -> m Boolean
+  analyzeQuery :: a -> SelectTree -> TableDef
 
 newtype External_ = External__ (forall r. (forall z. External z => z -> r) -> r)
 
@@ -62,5 +58,4 @@ wrap z = External__ (_ $ z)
 instance External (External_) where 
   tableDef (External__ run) = run tableDef
   tableExists (External__ run) = run tableExists
-  warn (External__ run) = run warn
-  hasErrors (External__ run) = run hasErrors
+  analyzeQuery (External__ run) = run analyzeQuery
