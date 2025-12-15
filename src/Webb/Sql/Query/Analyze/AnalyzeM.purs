@@ -24,6 +24,7 @@ type AnalyzeState =
   , errors :: ArrayColl String
   , aliases :: MapColl String String
   , locals :: MapColl String TableDef
+  , this :: MapColl String ValueType
   }
   
 warn :: forall m. MonadEffect m => String -> AnalyzeM m Unit

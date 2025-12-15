@@ -29,6 +29,7 @@ illegalCheck = do
   checkOrderBy
   
   where
+  -- Aggregation is allowed
   checkSelect = do 
     pure unit
 
@@ -40,7 +41,7 @@ illegalCheck = do
         P.Table _ -> pure unit
         P.SubQuery _ -> pure unit
         P.JoinOp { on } -> do 
-          -- Aggregation cannot happen yet.
+          -- Aggregation cannot happen during table specification
           noAggregate on
 
   checkWhere = do 
