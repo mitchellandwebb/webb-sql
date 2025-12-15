@@ -4,8 +4,7 @@ import Prelude
 import Webb.Sql.Query.Analyze.AnalyzeM
 import Webb.Sql.Query.Analyze.Types
 
-import Data.Foldable (for_)
-import Data.Set (Set)
+import Data.Newtype (unwrap)
 import Data.Set as Set
 import Data.String as Str
 import Effect.Class (class MonadEffect)
@@ -19,70 +18,59 @@ import Webb.State.Prelude (mread)
   These illegal usages, and any others, are specified here so we can notify the user.
 -}
 
+checkAllIllegal :: forall m. MonadEffect m => Analyze m Unit
+checkAllIllegal = do
+  this <- mread 
+  let tree = this.tree
+  illegal tree.select
+  illegal tree.from
+  illegal tree.where
 
-{-}
-illegalCheck :: forall m. MonadEffect m => Analyze m Unit
-illegalCheck = do
-  checkSelect
-  checkFrom
-  checkWhere
-  checkGroupBy
-  checkOrderBy
-  
-  where
-  -- Aggregation is allowed
-  checkSelect = do 
-    pure unit
+class IllegalCheck a where
+  illegal :: forall m. MonadEffect m => a -> Analyze m Unit
 
-  checkFrom = do 
-    this <- mread
-    case this.tree.from of
-      P.Tables _ -> pure unit
-      P.Joins join -> case join of
-        P.Table _ -> pure unit
-        P.SubQuery _ -> pure unit
-        P.JoinOp { on } -> do 
-          -- Aggregation cannot happen during table specification
-          noAggregate on
-
-  checkWhere = do 
-    this <- mread
-    let expr = this.tree.where.expr
-    -- Aggregation cannot happen during filtering
-    noAggregate expr
-
-  -- Aggregation is allowed
-  checkGroupBy = do 
-    this <- mread
-    let groupBy = this.tree.groupBy
-    for_ groupBy \gb -> do
-      for_ gb.fields \_field -> do 
-        pure unit
-
-  -- Aggregation is allowed
-  checkOrderBy = do 
-    this <- mread
-    let orderBy = this.tree.orderBy
-    for_ orderBy \ob -> do
-      for_ ob.fields \_field -> do 
-        pure unit
-
-
-noAggregate :: forall m. MonadEffect m => P.ValueExpr -> Analyze m Unit
-noAggregate expr = case expr of
-  P.Field _ -> pure unit
-  P.This _ -> pure unit
-  P.Prim _ -> pure unit
-  P.Wildcard _ -> pure unit
-  P.Call s -> do
-    let name = Str.toLower (s.name.string)
-    when (Set.member name aggregates) do
-      warn $ message name
-  where
-  aggregates = Set.fromFoldable
-    [ "count", "min", "max", "sum", "avg"
-    ]
+instance IllegalCheck P.Select where
+  illegal sel = do
+    let cols = unwrap sel
+    illegal <$!> cols
     
-  message name = 
-    "Aggregate function '" <> name <> "' cannot be used here"      
--}
+instance IllegalCheck P.From where
+  illegal from = case from of
+    P.Tables _ -> pure unit
+    P.Joins join -> illegal join
+    
+instance IllegalCheck P.Where where
+  illegal w = do
+    let expr = unwrap w
+    illegal expr
+    
+instance IllegalCheck P.Join where
+  illegal join = case join of
+    P.Table _ -> pure unit
+    P.SubQuery _ -> pure unit
+    P.JoinOp s -> do 
+      illegal s.on
+      illegal s.table1
+      illegal s.table2
+      
+instance IllegalCheck P.Column where
+  illegal col = do 
+    let s = unwrap col
+    illegal s.expr
+      
+instance IllegalCheck P.ValueExpr where
+  illegal expr = case expr of
+    P.Field _ -> pure unit
+    P.This _ -> pure unit
+    P.Prim _ -> pure unit
+    P.Wildcard _ -> pure unit
+    P.Call s -> do
+      let name = Str.toLower (s.name.string)
+      when (Set.member name aggregates) do
+        warn $ message name
+    where
+    aggregates = Set.fromFoldable
+      [ "count", "min", "max", "sum", "avg"
+      ]
+    message name = 
+      "Aggregate function '" <> name <> "' cannot be used here"      
