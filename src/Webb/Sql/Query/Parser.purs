@@ -7,6 +7,7 @@ import Data.Array as A
 import Data.Either (Either(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype, wrap)
 import Data.Set as Set
 import Data.String as Str
 import Data.String.CodeUnits (fromCharArray)
@@ -41,13 +42,14 @@ type Query =
   , limit :: Maybe Limit
   }
 
-type Select =
-  { columns :: Array Column
-  }
+newtype Select = Sel (Array Column)
+derive instance Newtype Select _
 
-type Column = { expr :: ValueExpr, alias :: Maybe Token }
+newtype Column = Col { expr :: ValueExpr, alias :: Maybe Token }
+derive instance Newtype Column _
 
-type ColumnName = { table :: Maybe Token, field :: Token }
+newtype ColumnName = ColName { table :: Maybe Token, field :: Token }
+derive instance Newtype ColumnName _
 
 data ValueExpr
   = Field ColumnName
@@ -63,33 +65,37 @@ data Join
   | JoinOp { kind :: JoinType, table1 :: Join, table2 :: Join, on :: ValueExpr }
   | SubQuery { query :: Query, alias :: Maybe Token }
   
-type TableData = { table :: Token, alias :: Maybe Token }
+newtype TableData = TData { table :: Token, alias :: Maybe Token }
+derive instance Newtype TableData _
   
 data JoinType = InnerJoin | OuterJoin | LeftJoin | RightJoin
 
-type Where = 
-  { expr :: ValueExpr
-  }
+newtype Where = WhereClause ValueExpr
+derive instance Newtype Where _
   
-type IntegerLit = 
+newtype IntegerLit = IntLit 
   { token :: Token
   , value :: Int
   }
+derive instance Newtype IntegerLit _
 
-type NumberLit = 
+newtype NumberLit = NumLit
   { token :: Token
   , value :: Number
   }
+derive instance Newtype NumberLit _
 
-type StringLit = 
+newtype StringLit = StrLit
   { token :: Token
   , value :: String
   }
+derive instance Newtype StringLit _
 
-type BooleanLit = 
+newtype BooleanLit = BoolLit
   { token :: Token
   , value :: Boolean
   }
+derive instance Newtype BooleanLit _
   
 data Literal
   = Integer IntegerLit
@@ -97,18 +103,17 @@ data Literal
   | Text StringLit
   | Bool BooleanLit
   
-type OrderBy = 
+newtype OrderBy = OrdBy
   { fields :: Array ValueExpr
   , asc :: Boolean
   }
+derive instance Newtype OrderBy _
 
-type GroupBy = 
-  { fields :: Array ValueExpr
-  }
+newtype GroupBy = GrpBy (Array ValueExpr)
+derive instance Newtype GroupBy _
 
-type Limit = 
-  { value :: IntegerLit
-  }
+newtype Limit = Lim IntegerLit
+derive instance Newtype Limit _
   
 query :: Parser Query
 query = do
@@ -131,14 +136,14 @@ query = do
 select :: Parser Select
 select = do 
   columns <- PC.many column
-  pure $ { columns }
+  pure $ wrap columns
   
   where
   column :: Parser Column
   column = do 
     expr <- valueExpr
     alias <- optionMaybe T.ident
-    pure $ { expr, alias }
+    pure $ wrap { expr, alias }
 
 valueExprs :: Parser (Array ValueExpr)
 valueExprs = try do
@@ -202,7 +207,7 @@ tableData :: Parser TableData
 tableData = try do
   t <- T.ident
   alias <- optionMaybe T.ident
-  pure $ { table: t, alias }
+  pure $ wrap { table: t, alias }
   
 join :: Parser Join
 join = try do
@@ -254,7 +259,7 @@ join = try do
 where' :: Parser Where
 where' = do 
   expr <- valueExpr
-  pure $ { expr }
+  pure $ wrap expr
   
 -- Attempt to parse a string. Fail if the string parse fails
 parseString :: forall a. String -> StringParser a -> Parser a
@@ -281,9 +286,9 @@ booleanLit = try do
   token <- T.booleanLit
   let str = Str.toLower token.string
   if str == "true" then 
-    pure { token, value: true }
+    pure $ wrap { token, value: true }
   else if str == "false" then
-    pure { token, value: false }
+    pure $ wrap { token, value: false }
   else 
     fail "Not a valid boolean literal"
     
@@ -292,14 +297,14 @@ integerLit :: Parser IntegerLit
 integerLit = try do 
   token <- T.numberLit
   num <- parseString token.string PB.intDecimal
-  pure { token, value: num }
+  pure $ wrap { token, value: num }
   
 -- Turn the token into a FP number representation in memory.
 numberLit :: Parser NumberLit
 numberLit = try do 
   token <- T.numberLit
   num <- parseString token.string PB.number
-  pure { token, value: num }
+  pure $ wrap { token, value: num }
   
 -- Turn the string literal into an in-memory string, for analysis (if needed).
 -- This is particularly useful if the code-generated string does not look the
@@ -308,7 +313,7 @@ stringLit :: Parser StringLit
 stringLit = try do
   token <- T.stringLit
   value <- parseString token.string contents
-  pure { token, value }
+  pure $ wrap { token, value }
   
   where
   -- Read visible characters from the string, and add to the output. Thus,
@@ -352,7 +357,7 @@ groupBy = try do
   _ <- T.group
   _ <- T.by
   exprs <- valueExprs
-  pure $ { fields: exprs }
+  pure $ wrap exprs
       
 orderBy :: Parser OrderBy  
 orderBy = try do
@@ -360,7 +365,7 @@ orderBy = try do
   _ <- T.by
   exprs <- valueExprs
   asc <- option true ascending
-  pure $ { fields: exprs, asc }
+  pure $ wrap { fields: exprs, asc }
   
   where 
   ascending = do
@@ -374,7 +379,7 @@ limit :: Parser Limit
 limit = try do
   _ <- T.limit
   int <- integerLit
-  pure $ { value: int }
+  pure $ wrap int
   
 columnName :: Parser ColumnName
 columnName = try do
@@ -383,7 +388,7 @@ columnName = try do
     _ <- T.dot
     pure table
   field <- T.ident
-  pure { table, field }
+  pure $ wrap { table, field }
   
 columnNames :: Parser (Array ColumnName)
 columnNames = try do 
