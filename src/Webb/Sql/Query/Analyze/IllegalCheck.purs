@@ -18,13 +18,14 @@ import Webb.State.Prelude (mread)
   These illegal usages, and any others, are specified here so we can notify the user.
 -}
 
-checkAllIllegal :: forall m. MonadEffect m => Analyze m Unit
+checkAllIllegal :: forall m. MonadEffect m => Analyze m Boolean
 checkAllIllegal = do
   this <- mread 
   let tree = this.tree
   illegal tree.select
   illegal tree.from
   illegal tree.where
+  isSuccess
 
 class IllegalCheck a where
   illegal :: forall m. MonadEffect m => a -> Analyze m Unit

@@ -23,7 +23,7 @@ buildThis = do
   checkGroupBy
   checkOrderBy
 
-  notM hasErrors
+  isSuccess
   
   where
   checkSelect = pure unit
