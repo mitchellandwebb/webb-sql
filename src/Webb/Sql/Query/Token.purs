@@ -5,18 +5,20 @@ import Prelude
 import Control.Alt ((<|>))
 import Control.Monad.Error.Class as Err
 import Data.Array as A
-import Data.Either (isRight)
+import Data.Either (Either(..), isRight)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 import Data.String as Str
 import Data.String.CodeUnits (fromCharArray)
 import Data.Traversable (class Foldable, sequence)
-import Parsing (Position(..), fail)
+import Effect.Class (class MonadEffect, liftEffect)
+import Parsing (ParseError(..), Position(..), fail, runParser)
 import Parsing as P
 import Parsing.Combinators (lookAhead, option, try)
 import Parsing.Combinators.Array as PC
 import Parsing.String as PS
 import Parsing.String.Basic as PB
+import Webb.Monad.Prelude (throwString)
 
 {- Since SQL does not care about case, we tokenize to eliminate string differences, and to make clear the actual tokens we are working with.
 -}
@@ -97,6 +99,18 @@ forToken kind prog = try do
     (Position s) <- P.position
     pure s
     
+tokenize :: forall m. MonadEffect m => String -> m (Array Token)
+tokenize s = case runParser s tokens of
+  Left (ParseError msg (Position pos)) -> liftEffect do 
+    throwString $ "Error at " <> show pos <> ": " <> msg
+  Right r -> pure r
+  
+parse :: forall m a. MonadEffect m => String -> Parser a -> m a
+parse str prog = case runParser str prog of
+  Left (ParseError msg (Position pos)) -> liftEffect do 
+    throwString $ "Error at " <> show pos <> ": " <> msg
+  Right r -> pure r
+    
 -- Turn a string into an array of tokens. We ignore
 -- whitespace intentionally.
 tokens :: Parser (Array Token)
@@ -135,15 +149,22 @@ token = try do
     rightParen <|>
     like <|>
     limit <|>
-    gt <|>
+
     gte <|>
-    lt <|>
     lte <|>
-    equal <|>
+    gt <|>
+    lt <|>
+
     notEqual <|>
+    equal <|>
+
     on <|>
     asc <|>
     desc <|>
+
+    stringLit <|>
+    numberLit <|>
+    boolean <|>
 
     ident -- ALWAYS last, to prevent conflict with all keywords
     
@@ -243,24 +264,24 @@ rightParen = forToken RIGHT_PAREN do anyCase ")"
 -- SELECT "abc" FROM...
 stringLit :: Parser Token
 stringLit = forToken STRING do
-  try singleQ <|> try doubleQ
+  try doubleQ <|> try singleQ
   where
-  singleQ = try do
+  doubleQ = try do
     let delim = PS.string "\""
     s1 <- delim
-    str <- contents 
+    str <- contentsWithout "\"" 
     s2 <- delim
     pure $ Str.joinWith "" [s1, str, s2]
   
-  doubleQ = try do
-    let delim = PS.string "\'"
+  singleQ = try do
+    let delim = PS.string "'"
     s1 <- delim
-    str <- contents
+    str <- contentsWithout "'"
     s2 <- delim
     pure $ Str.joinWith "" [s1, str, s2]
     
-  contents = try do
-    strings <- PC.many stringChar
+  contentsWithout str = try do
+    strings <- PC.many (reject str stringChar)
     pure $ Str.joinWith "" strings
     
   stringChar = try do
@@ -303,7 +324,7 @@ fromChars :: forall f. Foldable f => f Char -> String
 fromChars chars = fromCharArray $ A.fromFoldable chars
     
 reject :: forall a. Show a => Eq a => a -> Parser a -> Parser a
-reject a prog = do
+reject a prog = try do
   res <- prog
   if res == a then do
     fail $ "Rejected parse: " <> show a
