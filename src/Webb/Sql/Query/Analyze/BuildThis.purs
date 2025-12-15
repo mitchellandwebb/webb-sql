@@ -14,6 +14,7 @@ import Webb.Monad.Prelude (notM)
 -}
 
 
+{-
 buildThis :: forall m. MonadEffect m => Analyze m Boolean
 buildThis = do
   checkSelect
@@ -30,4 +31,4 @@ buildThis = do
   checkWhere = pure unit
   checkGroupBy = pure unit
   checkOrderBy = pure unit
-  
+ -} 

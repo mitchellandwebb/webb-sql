@@ -20,6 +20,7 @@ import Webb.Stateful.MapColl as M
 -}
 
 
+{-}
 confirmSymbols :: forall m. MonadEffect m =>
   AnalyzeM m Boolean
 confirmSymbols = do
@@ -194,5 +195,5 @@ confirmSoloField field = do
           warn $ "Field '" <> field <> "' could not be found on table '" 
             <> tableDef.name <> "'"
 
-
+-}
 

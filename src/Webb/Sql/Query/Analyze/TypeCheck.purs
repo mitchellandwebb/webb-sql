@@ -29,6 +29,7 @@ import Webb.Stateful.MapColl as M
 -}
 
 
+{-
 checkQuery :: forall m. MonadEffect m => AnalyzeM m Boolean
 checkQuery = do
   checkSelect
@@ -181,4 +182,4 @@ getFieldDef tableDef field = do
   getField :: String -> AnalyzeM m FieldDef
   getField fi = do
     force ("No such field: " <> fi) (Map.lookup fi tableDef.fields)
-  
+-}

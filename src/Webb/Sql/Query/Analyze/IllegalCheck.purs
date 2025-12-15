@@ -20,6 +20,7 @@ import Webb.State.Prelude (mread)
 -}
 
 
+{-}
 illegalCheck :: forall m. MonadEffect m => Analyze m Unit
 illegalCheck = do
   checkSelect
@@ -84,3 +85,4 @@ noAggregate expr = case expr of
     
   message name = 
     "Aggregate function '" <> name <> "' cannot be used here"      
+-}
