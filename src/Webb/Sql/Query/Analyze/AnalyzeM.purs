@@ -4,7 +4,9 @@ import Prelude
 import Webb.Sql.Query.Analyze.Types
 
 import Control.Monad.State (StateT)
+import Data.Foldable (for_)
 import Data.Maybe (Maybe)
+import Data.Traversable (class Traversable)
 import Effect.Class (class MonadEffect, liftEffect)
 import Webb.Monad.Prelude (forceMaybe', notM)
 import Webb.State.Prelude (mread)
@@ -51,3 +53,8 @@ assertM prog msg = unlessM prog do warn msg
 
 force :: forall m a. MonadEffect m => String -> Maybe a -> AnalyzeM m a
 force str maybe = liftEffect do forceMaybe' str maybe
+
+flipFor :: forall m f a. Monad m => Traversable f => (a -> m Unit) -> f a -> m Unit
+flipFor f arr = for_ arr f
+
+infix 5 flipFor as <$!>

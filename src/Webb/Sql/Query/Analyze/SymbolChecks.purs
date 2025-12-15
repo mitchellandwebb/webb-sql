@@ -9,9 +9,11 @@ import Data.Array as Arr
 import Data.Foldable (for_)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.Newtype (unwrap)
 import Effect.Class (class MonadEffect, liftEffect)
 import Webb.Monad.Prelude (forceMaybe', notM)
 import Webb.Sql.Query.Parser as P
+import Webb.Sql.Query.Token (Token)
 import Webb.State.Prelude (mread)
 import Webb.Stateful.MapColl as M
 
@@ -20,126 +22,102 @@ import Webb.Stateful.MapColl as M
 -}
 
 
-{-}
-confirmSymbols :: forall m. MonadEffect m =>
+checkAllSymbols :: forall m. MonadEffect m =>
   AnalyzeM m Boolean
-confirmSymbols = do
-  confirmSelect
-  confirmFrom
-  confirmWhere
-  confirmGroupBy
-  confirmOrderBy
-
-  notM hasErrors
-  
--- Confirm the symbols in all the columns.
-confirmSelect :: forall m. MonadEffect m => AnalyzeM m Unit
-confirmSelect = do 
+checkAllSymbols = do
   this <- mread
-  for_ this.tree.select.columns confirmColumn
+  let tree = this.tree
+  checkSymbols tree.select
+  checkSymbols tree.from
+  checkSymbols tree.where
+  checkSymbols <$!> tree.groupBy
+  checkSymbols <$!> tree.orderBy
+  isSuccess
+
+class CheckSymbols a where
+  checkSymbols :: forall m. MonadEffect m => a -> Analyze m Unit
   
-  where
-  confirmColumn col = do confirmExpr col.expr
-  
-confirmExprs :: forall m. MonadEffect m => Array P.ValueExpr -> AnalyzeM m Unit
-confirmExprs exprs = for_ exprs confirmExpr
+instance CheckSymbols P.Select where
+  checkSymbols sel = do
+    let cols = unwrap sel
+    for_ cols checkSymbols
 
-confirmExpr :: forall m. MonadEffect m => P.ValueExpr -> AnalyzeM m Unit
-confirmExpr expr = case expr of
-  P.Field name -> do 
-    confirmColumnName name
-        
-  P.Wildcard s -> do
-    let mtable = _.string <$> s.table
-    for_ mtable confirmAlias
-    
-  P.Call s -> do
-    -- If  it is a function call, confirm the function and then the rest
-    -- of the expression.
-    let name = _.string s.name
-    confirmFn name
-    for_ s.args confirmExpr      
-      
-  -- Type inference for 'this' has to be done separately.
-  P.This _ -> do pure unit
-
-  -- Primitives have no symbols.
-  P.Prim _ -> do pure unit
-
--- Confirm the join expressions.
-confirmFrom :: forall m. MonadEffect m => AnalyzeM m Unit
-confirmFrom = do 
-  this <- mread
-  case this.tree.from of
-    P.Tables _ -> do 
-      -- Tables have no unknown symbols
-      pure unit
-    
+instance CheckSymbols P.From where
+  checkSymbols from = case from of 
+    P.Tables _ -> do pure unit
     P.Joins join -> do
-      confirmJoin join
+      checkSymbols join
       
-  where
-  confirmJoin join = case join of
-    P.Table _ -> do 
-      -- No symbols exist in the table itself
-      pure unit
-    P.JoinOp s -> do 
-      confirmExpr s.on
-      confirmJoin s.table1
-      confirmJoin s.table2
-    P.SubQuery _ -> do 
-      -- Subqueries were confirmed earlier during table definition generation.
-      pure unit
-  
-confirmWhere :: forall m. MonadEffect m => AnalyzeM m Unit
-confirmWhere = do 
-  this <- mread
-  confirmExpr this.tree.where.expr
-  
-confirmGroupBy :: forall m. MonadEffect m => AnalyzeM m Unit
-confirmGroupBy = do 
-  this <- mread
-  for_ this.tree.groupBy \{ fields } -> do
-    confirmExprs fields
-  
-confirmOrderBy :: forall m. MonadEffect m => AnalyzeM m Unit
-confirmOrderBy = do
-  this <- mread
-  for_ this.tree.orderBy \{ fields } -> do
-    confirmExprs fields
+instance CheckSymbols P.Where where
+  checkSymbols where' = do 
+    let w = unwrap where'
+    checkSymbols w
     
-confirmColumnNames :: forall m. MonadEffect m => 
-  Array P.ColumnName -> AnalyzeM m Unit
-confirmColumnNames columns = do
-  for_ columns confirmColumnName
-
-confirmColumnName :: forall m. MonadEffect m => 
-  P.ColumnName -> AnalyzeM m Unit
-confirmColumnName column = do
-  let field = _.string column.field
-      mtable = _.string <$> column.table
-  case mtable of
-    Nothing -> do
-      confirmSoloField field
-    Just table -> do
-      confirmField table field
+instance CheckSymbols P.GroupBy where
+  checkSymbols gb = do
+    let fields = unwrap gb
+    for_ fields checkSymbols
+    
+instance CheckSymbols P.OrderBy where
+  checkSymbols this = do
+    let s = unwrap this
+    for_ s.fields checkSymbols
       
+instance CheckSymbols P.Join where
+  checkSymbols join = case join of
+    P.Table _ -> do pure unit
+    P.SubQuery _ -> do pure unit
+    P.JoinOp s -> do 
+      checkSymbols s.on
+      checkSymbols s.table1
+      checkSymbols s.table2
+    
+instance CheckSymbols P.Column where
+  checkSymbols col = do
+    let s = unwrap col
+    checkSymbols s.expr
+    
+instance CheckSymbols P.ValueExpr where
+  checkSymbols expr = case expr of 
+    P.Field name -> do 
+      checkSymbols name
+          
+    P.Wildcard s -> do
+      let mtable = s.table
+      confirmAlias mtable
+      
+    P.Call s -> do
+      confirmFn s.name
+      for_ s.args checkSymbols      
+        
+    -- The rest contain no symbols
+    P.This _ -> do pure unit
+    P.Prim _ -> do pure unit
+    
+instance CheckSymbols P.ColumnName where
+  checkSymbols col = do
+    let { table, field } = unwrap col
+    confirmAlias table 
+    confirmField table field
+  
 confirmFn :: forall m. MonadEffect m =>
-  String -> AnalyzeM m Unit
-confirmFn name = do
+  Token -> AnalyzeM m Unit
+confirmFn tok = do
+  let name = tok.string
   this <- mread
   unless (fnExists this.ex name) do
     warn $ "Function does not exist: " <> name
 
 -- Warn if the alias doesn't exist.
 confirmAlias :: forall m. MonadEffect m =>
-  String -> AnalyzeM m Unit
-confirmAlias alias = do
-  void $ confirmAlias' alias
+  Maybe Token -> AnalyzeM m Unit
+confirmAlias mtok = do
+  for_ mtok confirmAlias'
 
 confirmAlias' :: forall m. MonadEffect m => 
-  String -> AnalyzeM m (Maybe TableDef)
-confirmAlias' alias = do
+  Token -> AnalyzeM m (Maybe TableDef)
+confirmAlias' tok = do
+  let alias = tok.string
   this <- mread  
   mtable <- M.lookup this.aliases alias
   case mtable of 
@@ -157,12 +135,21 @@ confirmAlias' alias = do
           pure Nothing
         Just tableDef -> do
           pure $ Just tableDef
+          
+confirmField :: forall m. MonadEffect m =>
+  Maybe Token -> Token -> Analyze m Unit
+confirmField mtable field = do
+  case mtable of
+    Nothing -> confirmSoloField field
+    Just table -> confirmAliasedField table field
 
 -- Confirm that the aliased field exists.
-confirmField :: forall m. MonadEffect m => 
-  String -> String -> AnalyzeM m Unit
-confirmField alias field = do
-  mtableDef <- confirmAlias' alias
+confirmAliasedField :: forall m. MonadEffect m => 
+  Token -> Token -> AnalyzeM m Unit
+confirmAliasedField aliasT fieldT = do
+  let alias = aliasT.string
+      field = fieldT.string
+  mtableDef <- confirmAlias' aliasT
   case mtableDef of
     Nothing -> do 
       pure unit
@@ -173,8 +160,9 @@ confirmField alias field = do
 -- Confirm that the solo field can be matched to a table, and that it belongs on
 -- that table. For this to work, there must be a _single_ table defined.
 confirmSoloField :: forall m. MonadEffect m =>
-  String -> AnalyzeM m Unit
-confirmSoloField field = do
+  Token -> AnalyzeM m Unit
+confirmSoloField fieldT = do
+  let field = fieldT.string
   this <- mread
   len <- M.length this.aliases
   if len /= 1 then do
@@ -195,5 +183,4 @@ confirmSoloField field = do
           warn $ "Field '" <> field <> "' could not be found on table '" 
             <> tableDef.name <> "'"
 
--}
 
