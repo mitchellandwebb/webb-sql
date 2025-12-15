@@ -11,7 +11,7 @@ import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Effect.Class (class MonadEffect, liftEffect)
-import Webb.Monad.Prelude (forceMaybe', notM)
+import Webb.Monad.Prelude (forceMaybe')
 import Webb.Sql.Query.Parser as P
 import Webb.Sql.Query.Token (Token)
 import Webb.State.Prelude (mread)

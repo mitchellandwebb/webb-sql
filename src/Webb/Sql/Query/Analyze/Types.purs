@@ -90,9 +90,11 @@ type ForeignKey =
   
 type FnDef = 
   { name :: String
-  , args :: Array ValueType
+  , args :: ArgCount
   , return :: ValueType
   }
+  
+data ArgCount = Infinite ValueType | Finite (Array ValueType) Int
 
 class External a where
   tableDef :: a -> String -> Maybe TableDef
